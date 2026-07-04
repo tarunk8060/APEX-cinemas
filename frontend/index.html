@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APEX CINEMAS - Premium Movie Booking</title>
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome for cinematic iconography -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="dark-theme">
+
+    <!-- ----------------- AUTHENTICATION OVERLAY ----------------- -->
+    <div id="auth-overlay" class="auth-overlay">
+
+        <div class="auth-card glass-card">
+            <div class="auth-header">
+                <h1 class="brand-logo"><span class="highlight">APEX</span> CINEMAS</h1>
+                <p class="tagline">Authorized Access Portal</p>
+            </div>
+
+            <!-- Auth Portal Switcher Tabs -->
+            <div class="auth-tabs">
+                <button id="tab-btn-user" class="tab-btn active" onclick="switchAuthTab('user')">User Portal</button>
+                <button id="tab-btn-admin" class="tab-btn" onclick="switchAuthTab('admin')">Admin Portal</button>
+            </div>
+
+            <!-- Tab 1: User Portal -->
+            <div id="portal-user" class="portal-content active">
+                <!-- User Sign In Frame -->
+                <div id="user-signin-frame" class="auth-frame active">
+                    <h2 class="form-title">User Sign In</h2>
+                    <form onsubmit="handleUserSignIn(event)">
+                        <div class="input-group">
+                            <i class="fa-solid fa-user"></i>
+                            <input type="text" id="user-login-name" placeholder="Enter Name" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="user-login-pass" placeholder="Enter Password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                    </form>
+                    <p class="toggle-link-wrapper">
+                        New to Apex Cinemas? <a href="#" onclick="toggleUserAuthMode('register')"
+                            class="accent-link">Create Account</a>
+                    </p>
+                </div>
+
+                <!-- User Registration Frame -->
+                <div id="user-register-frame" class="auth-frame">
+                    <h2 class="form-title text-success">Create Account</h2>
+                    <form onsubmit="handleUserSignUp(event)">
+                        <div class="input-group">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <input type="text" id="user-reg-name" placeholder="Enter Name" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="user-reg-pass" placeholder="Enter Password" required>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-block">Create Account & Login</button>
+                    </form>
+                    <p class="toggle-link-wrapper">
+                        Already have an account? <a href="#" onclick="toggleUserAuthMode('login')"
+                            class="accent-link-blue">Sign In</a>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Tab 2: Admin Portal -->
+            <div id="portal-admin" class="portal-content">
+                <div class="auth-frame active">
+                    <h2 class="form-title text-admin">Admin Portal Login</h2>
+                    <form onsubmit="handleAdminSignIn(event)">
+                        <div class="input-group">
+                            <i class="fa-solid fa-user-shield"></i>
+                            <input type="text" id="admin-login-name" placeholder="Admin Username" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="admin-login-pass" placeholder="Admin Password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                    </form>
+                    <p class="tagline warning-text"><i class="fa-solid fa-circle-info"></i> Authorized staff access only
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ----------------- MAIN CORE APPLICATION ----------------- -->
+    <div id="app-layout" class="app-layout hidden">
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h1 class="brand-logo"><span class="highlight">APEX</span><br>CINEMAS</h1>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button id="nav-btn-movies" class="nav-item active" onclick="showView('catalog')">
+                    <i class="fa-solid fa-film"></i> <span>Available Movies</span>
+                </button>
+                <button id="nav-btn-bookings" class="nav-item" onclick="showView('bookings')">
+                    <i class="fa-solid fa-ticket"></i> <span>My Bookings</span>
+                </button>
+                <button id="nav-btn-admin" class="nav-item hidden-admin" onclick="showView('admin')">
+                    <i class="fa-solid fa-sliders"></i> <span>Admin Panel</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-session-card">
+                    <i class="fa-solid fa-circle-user avatar-icon"></i>
+                    <div class="user-info">
+                        <span id="session-username" class="session-name">Guest User</span>
+                        <span id="session-role" class="session-role">Role: User</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-logout" onclick="handleLogout()">
+                    <i class="fa-solid fa-right-from-bracket"></i> <span>Log Out</span>
+                </button>
+
+                <div class="theme-switcher">
+                    <label for="theme-selector">Theme:</label>
+                    <select id="theme-selector" onchange="changeTheme(this.value)">
+                        <option value="dark">Dark Theme</option>
+                        <option value="light">Light Theme</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN DYNAMIC CONTENT HOLDER -->
+        <main class="main-content">
+
+            <!-- 1. CATALOG VIEW -->
+            <section id="view-catalog" class="app-view active">
+                <div class="view-header">
+                    <h2>Now Showing</h2>
+                    <p class="subtitle">Explore and book tickets for current features</p>
+                </div>
+                <div id="movies-grid" class="movies-grid">
+                    <!-- Loaded dynamically via app.js -->
+                </div>
+            </section>
+
+            <!-- 2. INTERACTIVE SEAT BOOKING VIEW -->
+            <section id="view-booking" class="app-view">
+                <div class="booking-header">
+                    <button class="btn btn-secondary btn-sm" onclick="showView('catalog')">
+                        <i class="fa-solid fa-arrow-left-long"></i> Back
+                    </button>
+                    <h2 id="booking-movie-title" class="booking-movie-title">Select Seats</h2>
+                </div>
+
+                <div class="booking-split-container">
+                    <!-- Left: Seat selector -->
+                    <div class="seat-selector-panel glass-panel">
+                        <div class="screen-indicator">
+                            <span class="screen-glow"></span>
+                            <p class="screen-label">STAGE / SCREEN THIS WAY</p>
+                        </div>
+
+                        <!-- Seat layout grid -->
+                        <div id="seat-layout-grid" class="seat-layout-grid">
+                            <!-- Loaded dynamically via app.js -->
+                        </div>
+
+                        <!-- Grid Legend -->
+                        <div class="legend-panel">
+                            <div class="legend-item">
+                                <span class="legend-box seat-available"></span>
+                                <span>Available</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-box seat-selected"></span>
+                                <span>Selected</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-box seat-booked"></span>
+                                <span>Booked</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-box seat-your-booking"></span>
+                                <span>Your Seat</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Checkout summary panel -->
+                    <div class="checkout-summary-panel glass-panel">
+                        <h3 class="panel-title"><i class="fa-solid fa-receipt"></i> Booking Summary</h3>
+                        <div class="divider"></div>
+
+                        <div class="movie-receipt-details">
+                            <div class="receipt-row">
+                                <span class="label">Movie Name:</span>
+                                <span id="summary-movie-name" class="value">Leo</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Language:</span>
+                                <span id="summary-movie-lang" class="value">Tamil</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Screen No:</span>
+                                <span id="summary-movie-screen" class="value">Screen 1</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Ticket Price:</span>
+                                <span id="summary-movie-price" class="value">₹150</span>
+                            </div>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="booking-tickets-info">
+                            <p id="summary-selected-seats">Selected Seats: None</p>
+                            <p id="summary-ticket-count">Total Tickets: 0</p>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="total-price-block">
+                            <span class="total-payable-label">Total Payable:</span>
+                            <span id="summary-total-price" class="total-payable-value">₹0</span>
+                        </div>
+
+                        <button id="confirm-booking-btn" class="btn btn-success btn-block btn-lg" disabled
+                            onclick="handleConfirmBooking()">
+                            Confirm Reservation
+                        </button>
+
+                        <div class="divider"></div>
+
+                        <!-- Recommendations -->
+                        <div class="recommendations-container">
+                            <h4 class="rec-title"><i class="fa-solid fa-clapperboard"></i> Recommended For You</h4>
+                            <div id="booking-recommendations" class="rec-list">
+                                <!-- Loaded dynamically via app.js -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. MY BOOKINGS VIEW -->
+            <section id="view-bookings" class="app-view">
+                <div class="view-header">
+                    <h2>My Booked Tickets</h2>
+                    <p class="subtitle">View and manage your active cinema reservations</p>
+                </div>
+                <div id="bookings-list-container" class="bookings-list-container">
+                    <!-- Loaded dynamically via app.js -->
+                </div>
+            </section>
+
+            <!-- 4. ADMIN PANEL VIEW -->
+            <section id="view-admin" class="app-view">
+                <div class="view-header">
+                    <h2>Admin Management Panel</h2>
+                    <p class="subtitle">Add, delete, and control movie catalogs in real-time</p>
+                </div>
+
+                <div class="admin-grid-layout">
+                    <!-- Left: Add movie card -->
+                    <div class="admin-card glass-panel">
+                        <div class="panel-accent-bar accent-blue"></div>
+                        <h3 class="panel-title"><i class="fa-solid fa-circle-plus"></i> Add New Movie</h3>
+
+                        <form onsubmit="handleNewMovieSubmit(event)">
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-id" placeholder="Movie ID (e.g. MOV006)" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-title" placeholder="Movie Title" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-genre" placeholder="Genre (e.g. Action)" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-lang" placeholder="Language (e.g. English)" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="number" id="admin-movie-price" placeholder="Ticket Price (INR)" required
+                                    min="1">
+                            </div>
+                            <div class="form-group">
+                                <input type="number" id="admin-movie-seats" placeholder="Total Theatre Seats" required
+                                    min="1">
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-screen"
+                                    placeholder="Screen Number/Type (e.g. Screen 1)" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="url" id="admin-movie-image"
+                                    placeholder="Movie Poster Image URL (optional)">
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-block">Add Movie to Database</button>
+                        </form>
+                    </div>
+
+                    <!-- Right: Movie listing table/widget -->
+                    <div class="admin-card glass-panel">
+                        <div class="panel-accent-bar accent-red"></div>
+                        <h3 class="panel-title"><i class="fa-solid fa-list-check"></i> Manage Active Movies</h3>
+                        <div id="admin-movies-list" class="admin-movies-list">
+                            <!-- Loaded dynamically via app.js -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Alert / Toast notification element -->
+    <div id="toast-notification" class="toast-notification"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

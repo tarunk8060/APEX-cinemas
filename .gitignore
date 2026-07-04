@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+node_modules/
+*.egg-info/
+dist/
+build/
+.env
+.DS_Store
+
+# booked_seats.db is a leftover legacy file
+booked_seats.db
+
+# DO NOT ignore movie.db — Render needs it for seed data (movies table)
+# movie.db

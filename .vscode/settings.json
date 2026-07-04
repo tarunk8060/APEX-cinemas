@@ -1,0 +1,15 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}"
+    ],
+    "python.analysis.venvPath": "${workspaceFolder}",
+    "python.analysis.venv": ".venv",
+    "pyrefly.pythonInterpreter": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "liveServer.settings.ignoreFiles": [
+        "**/*.db",
+        "**/*.db-journal",
+        "**/*.sqlite",
+        "**/movie.db"
+    ]
+}
