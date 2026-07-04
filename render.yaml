@@ -7,13 +7,3 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: DATABASE_URL
-        fromDatabase:
-          name: apex-cinemas-db
-          property: connectionString
-
-databases:
-  - name: apex-cinemas-db
-    databaseName: apexcinemas
-    user: apexuser
-    plan: free
