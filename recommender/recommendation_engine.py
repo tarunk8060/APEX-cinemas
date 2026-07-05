@@ -9,6 +9,51 @@ from sklearn.metrics.pairwise import cosine_similarity
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.path.join(BASE_DIR, 'recommender', 'movies.csv')
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
+USE_POSTGRES = bool(DATABASE_URL)
+if USE_POSTGRES:
+    import psycopg2
+
+def get_db_movies():
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, genre FROM movies")
+        db_movies = cursor.fetchall()
+        conn.close()
+    else:
+        DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, 'movie.db'))
+        if not os.path.exists(DB_PATH):
+            return []
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, genre FROM movies")
+        db_movies = cursor.fetchall()
+        conn.close()
+    return db_movies
+
+def get_db_count():
+    try:
+        if USE_POSTGRES:
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM movies")
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count
+        else:
+            DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, 'movie.db'))
+            if os.path.exists(DB_PATH):
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM movies")
+                count = cursor.fetchone()[0]
+                conn.close()
+                return count
+    except Exception:
+        pass
+    return 0
+
 def parse_genres(genres_str):
     try:
         genres_list = json.loads(genres_str)
@@ -21,15 +66,7 @@ def load_data_and_train_model():
     Loads movie metadata from both movie.db and the Kaggle CSV, processes them,
     and computes the TF-IDF Cosine Similarity matrix on the active database movies.
     """
-    DB_PATH = os.path.join(BASE_DIR, 'movie.db')
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Database not found at '{DB_PATH}'")
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT Name, Genre FROM movies")
-    db_movies = cursor.fetchall()
-    conn.close()
+    db_movies = get_db_movies()
 
     # Load Kaggle CSV if available to fetch detailed overview/genres descriptions
     csv_df = pd.read_csv(CSV_PATH) if os.path.exists(CSV_PATH) else pd.DataFrame()
@@ -44,7 +81,8 @@ def load_data_and_train_model():
                 match = matches.iloc[0]
 
         if match is not None:
-            genres = parse_genres(match['genres'])
+            kaggle_genres = parse_genres(match['genres'])
+            genres = f"{db_genre} {kaggle_genres}" if db_genre else kaggle_genres
             overview = match['overview'] if pd.notna(match['overview']) else ""
         else:
             genres = db_genre if db_genre else ""
@@ -81,19 +119,8 @@ def get_recommendations(movie_title, top_n=3):
     Given a movie title, returns the top_n most similar movies from the active database.
     """
     global _df_cached, _cosine_sim_cached
-    DB_PATH = os.path.join(BASE_DIR, 'movie.db')
-
     # Check if database has changed (number of movies)
-    db_count = 0
-    try:
-        if os.path.exists(DB_PATH):
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM movies")
-            db_count = cursor.fetchone()[0]
-            conn.close()
-    except Exception:
-        pass
+    db_count = get_db_count()
 
     # Load and cache similarity matrix if not loaded or if database count changed
     if _df_cached is None or _cosine_sim_cached is None or len(_df_cached) != db_count:

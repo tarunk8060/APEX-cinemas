@@ -810,16 +810,7 @@ function escapeHTML(str) {
 // NOTE: Do NOT call loadCatalog() here — the user must log in first.
 // The catalog is loaded by onLoginSuccess() -> showView('catalog').
 window.onload = () => {
-    // Restore user session if available
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-        try {
-            state.currentUser = JSON.parse(savedUser);
-            onLoginSuccess();
-        } catch (e) {
-            console.error('Failed to parse saved user session:', e);
-            localStorage.removeItem('currentUser');
-            localStorage.removeItem('activeView');
-        }
-    }
+    // Clear user session so it asks for login every time the link is opened
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('activeView');
 };
