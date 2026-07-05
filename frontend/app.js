@@ -324,6 +324,39 @@ async function loadCatalog() {
         const movies = await apiRequest('/movies');
         state.movies = movies;
 
+        // Sort movies by favorite genre based on previous bookings
+        if (state.currentUser && state.currentUser.role === 'user') {
+            try {
+                const bookings = await apiRequest(`/bookings?user_id=${state.currentUser.id}`);
+                if (bookings.length > 0) {
+                    const genreCounts = {};
+                    bookings.forEach(b => {
+                        const m = movies.find(movie => movie.id === b.movie_id);
+                        if (m && m.genre) {
+                            const genres = m.genre.split(' ');
+                            genres.forEach(g => {
+                                genreCounts[g] = (genreCounts[g] || 0) + 1;
+                            });
+                        }
+                    });
+                    
+                    const sortedGenres = Object.keys(genreCounts).sort((a, b) => genreCounts[b] - genreCounts[a]);
+                    
+                    if (sortedGenres.length > 0) {
+                        const topGenres = sortedGenres.slice(0, 2); // Use top 2 genres
+                        
+                        movies.sort((a, b) => {
+                            const aScore = (a.genre || '').split(' ').filter(g => topGenres.includes(g)).length;
+                            const bScore = (b.genre || '').split(' ').filter(g => topGenres.includes(g)).length;
+                            return bScore - aScore;
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not fetch bookings to sort catalog', err);
+            }
+        }
+
         if (movies.length === 0) {
             grid.innerHTML = `
                 <div class="text-center w-full" style="grid-column: 1 / -1; padding: 60px 0;">
@@ -568,21 +601,29 @@ function renderRecommendations(recs) {
     }
 
     recs.forEach(rec => {
-        const card = document.createElement('div');
-        card.className = 'rec-card';
-
         // Find if movie exists in system to allow instant booking link
         const systemMovie = state.movies.find(m => m.name.toLowerCase() === rec.title.toLowerCase());
+
+        // Skip movies that are not currently in the system
+        if (!systemMovie) return;
+
+        const card = document.createElement('div');
+        card.className = 'rec-card';
 
         card.innerHTML = `
             <div class="rec-info">
                 <h5>${escapeHTML(rec.title)}</h5>
                 <p>${escapeHTML(rec.genres)}</p>
             </div>
-            ${systemMovie ? `<button class="btn btn-secondary btn-sm" onclick="startBooking('${systemMovie.id}')">Book Now</button>` : ''}
+            <button class="btn btn-secondary btn-sm" onclick="startBooking('${systemMovie.id}')">Book Now</button>
         `;
         list.appendChild(card);
     });
+
+    // Check again in case all recommendations were filtered out
+    if (list.children.length === 0) {
+        list.innerHTML = '<p class="subtitle text-center" style="font-size:11px;">No similar movies found.</p>';
+    }
 }
 
 // -------------------------------------------------------------
