@@ -252,26 +252,28 @@ function onLoginSuccess() {
 }
 
 function handleLogout() {
-    state.currentUser = null;
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('activeView');
+    if (confirm('Are you sure you want to log out?')) {
+        state.currentUser = null;
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('activeView');
 
-    // Hide Main App & Reset Navs
-    document.getElementById('app-layout').classList.add('hidden');
-    document.getElementById('auth-overlay').classList.remove('hidden');
+        // Hide Main App & Reset Navs
+        document.getElementById('app-layout').classList.add('hidden');
+        document.getElementById('auth-overlay').classList.remove('hidden');
 
-    // Reset login inputs
-    document.getElementById('user-login-name').value = '';
-    document.getElementById('user-login-pass').value = '';
-    document.getElementById('user-reg-name').value = '';
-    document.getElementById('user-reg-pass').value = '';
-    document.getElementById('admin-login-name').value = '';
-    document.getElementById('admin-login-pass').value = '';
+        // Reset login inputs
+        document.getElementById('user-login-name').value = '';
+        document.getElementById('user-login-pass').value = '';
+        document.getElementById('user-reg-name').value = '';
+        document.getElementById('user-reg-pass').value = '';
+        document.getElementById('admin-login-name').value = '';
+        document.getElementById('admin-login-pass').value = '';
 
-    toggleUserAuthMode('login');
-    switchAuthTab('user');
+        toggleUserAuthMode('login');
+        switchAuthTab('user');
 
-    showToast('Logged out successfully.', 'info');
+        showToast('Logged out successfully.', 'info');
+    }
 }
 
 // -------------------------------------------------------------
@@ -568,22 +570,24 @@ async function handleConfirmBooking() {
     const seatsStr = state.selectedSeats.join(', ');
     const price = state.selectedSeats.length * movie.price;
 
-    try {
-        await apiRequest(`/movies/${movie.id}/book`, {
-            method: 'POST',
-            body: JSON.stringify({
-                user_name: state.currentUser.username,
-                user_id: state.currentUser.id,
-                seats: state.selectedSeats
-            })
-        });
+    if (confirm(`Confirm Reservation?\n\nMovie: ${movie.name}\nSeats: ${seatsStr}\nTotal Price: ₹${price}`)) {
+        try {
+            await apiRequest(`/movies/${movie.id}/book`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_name: state.currentUser.username,
+                    user_id: state.currentUser.id,
+                    seats: state.selectedSeats
+                })
+            });
 
-        showToast('Seats reserved successfully! Enjoy your show.', 'success');
-        showView('bookings');
-    } catch (err) {
-        showToast('Booking failed: ' + err.message, 'error');
-        // Reload page to avoid conflict
-        startBooking(movie.id);
+            showToast('Seats reserved successfully! Enjoy your show.', 'success');
+            showView('bookings');
+        } catch (err) {
+            showToast('Booking failed: ' + err.message, 'error');
+            // Reload page to avoid conflict
+            startBooking(movie.id);
+        }
     }
 }
 
@@ -675,16 +679,18 @@ async function loadBookings() {
 }
 
 async function cancelBooking(movieId, seatNo, refundAmt) {
-    try {
-        await apiRequest(`/movies/${movieId}/cancel`, {
-            method: 'POST',
-            body: JSON.stringify({ seat_no: seatNo })
-        });
+    if (confirm(`Cancel Booking?\n\nAre you sure you want to cancel seat ${seatNo}?\nThis will issue a refund of ₹${refundAmt}.`)) {
+        try {
+            await apiRequest(`/movies/${movieId}/cancel`, {
+                method: 'POST',
+                body: JSON.stringify({ seat_no: seatNo })
+            });
 
-        showToast('Reservation cancelled. Refund has been initiated.', 'success');
-        loadBookings();
-    } catch (err) {
-        showToast('Cancellation failed: ' + err.message, 'error');
+            showToast('Reservation cancelled. Refund has been initiated.', 'success');
+            loadBookings();
+        } catch (err) {
+            showToast('Cancellation failed: ' + err.message, 'error');
+        }
     }
 }
 
@@ -773,15 +779,17 @@ async function deleteMovie(movieId) {
     const movie = state.movies.find(m => m.id === movieId);
     const movieName = movie ? movie.name : 'this movie';
 
-    try {
-        const result = await apiRequest(`/movies/${movieId}`, {
-            method: 'DELETE'
-        });
+    if (confirm(`Delete Movie '${movieName}'?\n\nWARNING: This will permanently remove the movie and cancel all booked seats for it!`)) {
+        try {
+            const result = await apiRequest(`/movies/${movieId}`, {
+                method: 'DELETE'
+            });
 
-        showToast(result.message || `Movie ${movieName} deleted successfully.`, 'success');
-        loadAdminPanel();
-    } catch (err) {
-        showToast('Deletion failed: ' + err.message, 'error');
+            showToast(result.message || `Movie ${movieName} deleted successfully.`, 'success');
+            loadAdminPanel();
+        } catch (err) {
+            showToast('Deletion failed: ' + err.message, 'error');
+        }
     }
 }
 
