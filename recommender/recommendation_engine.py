@@ -82,7 +82,11 @@ def load_data_and_train_model():
 
         if match is not None:
             kaggle_genres = parse_genres(match['genres'])
-            genres = f"{db_genre} {kaggle_genres}" if db_genre else kaggle_genres
+            if db_genre:
+                combined_words = (db_genre + " " + kaggle_genres).split()
+                genres = " ".join(dict.fromkeys(combined_words))
+            else:
+                genres = kaggle_genres
             overview = match['overview'] if pd.notna(match['overview']) else ""
         else:
             genres = db_genre if db_genre else ""
