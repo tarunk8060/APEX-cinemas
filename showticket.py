@@ -1,15 +1,14 @@
 import sqlite3
 
 def show_booked_tickets():
-    
-
     conn = sqlite3.connect("movie.db")
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT *
-    FROM booked_seats"""
-    )
+    SELECT s.movie_id, b.seat_no
+    FROM booked_seats b
+    JOIN showtimes s ON b.showtime_id = s.id
+    """)
 
     booked_seats = cursor.fetchall()
 
@@ -22,6 +21,5 @@ def show_booked_tickets():
     print("_" * 30)
     print("Movie ID\tSeat No")
     for seat in booked_seats:
-        
         print(f"Movie ID: {seat[0]}, Seat No: {seat[1]}")
     conn.close()

@@ -1150,3 +1150,296 @@ body {
         transform: scale(1);
     }
 }
+
+/* =============================================================
+   UNIVERSAL CONFIRM MODAL
+   ============================================================= */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: modalFadeIn 0.2s ease;
+}
+.modal-overlay.hidden {
+    display: none;
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.modal-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 36px 32px 28px;
+    border-radius: 20px;
+    text-align: center;
+    animation: modalSlideUp 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+}
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(40px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-icon-badge {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 18px;
+    font-size: 26px;
+    transition: background 0.3s;
+}
+.modal-icon-badge.type-success { background: rgba(0, 230, 118, 0.15); color: var(--emerald-green); }
+.modal-icon-badge.type-danger  { background: rgba(229, 9, 20, 0.15);  color: var(--cinema-red);   }
+.modal-icon-badge.type-warning { background: rgba(255, 180, 0, 0.15); color: #FFB400;              }
+.modal-icon-badge.type-info    { background: rgba(0, 176, 255, 0.15); color: var(--tech-blue);     }
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+}
+
+.modal-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+    line-height: 1.5;
+}
+
+.modal-detail-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    text-align: left;
+}
+.modal-detail-box:empty { display: none; }
+
+.modal-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+.modal-detail-row:last-child { border-bottom: none; }
+.modal-detail-row .detail-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.modal-detail-row .detail-value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.modal-detail-row .detail-value.highlight { color: var(--emerald-green); }
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+}
+.modal-btn {
+    flex: 1;
+    padding: 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    cursor: pointer;
+    border: none;
+    transition: var(--transition-smooth);
+}
+#modal-confirm-btn.type-success { background: var(--emerald-green);  color: #000; }
+#modal-confirm-btn.type-success:hover { background: var(--emerald-hover); }
+#modal-confirm-btn.type-danger  { background: var(--cinema-red);      color: #fff; }
+#modal-confirm-btn.type-danger:hover  { background: var(--cinema-red-hover); }
+#modal-confirm-btn.type-warning { background: #FFB400;                color: #000; }
+#modal-confirm-btn.type-warning:hover { background: #e6a200; }
+#modal-confirm-btn.type-info    { background: var(--tech-blue);       color: #000; }
+#modal-confirm-btn.type-info:hover    { background: #0099dd; }
+
+
+/* CAROUSEL LAYOUT STYLING */
+/* -------------------------------------------------------------
+   CAROUSEL LAYOUT STYLING
+   ------------------------------------------------------------- */
+.carousel-container {
+    position: relative;
+    max-width: 100%;
+    height: 380px;
+    margin-bottom: 40px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--border-color);
+    background-color: rgba(22, 22, 22, 0.4);
+}
+
+/* Gradient overlay to smoothly blend images */
+.carousel-container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(to top, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0) 100%);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.carousel-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 1.2s ease-in-out; /* Smooth crossfade transition */
+    z-index: 1;
+}
+
+.carousel-slide.active {
+    opacity: 1;
+    z-index: 2;
+}
+
+.carousel-slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* Expired/Past Booking styling */
+.booking-row-card.expired {
+    opacity: 0.65;
+    background: rgba(22, 22, 22, 0.4);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.booking-row-card.expired .booking-indicator-bar {
+    background-color: #606770; /* Gray bar instead of Cinema Red */
+}
+
+.booking-row-card.expired:hover {
+    transform: none; /* Disable lift animation */
+}
+
+/* Badge styling for expired status */
+.badge-expired {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+
+/* Group Headers */
+.booking-group-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 25px 0 12px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.booking-group-title.active-title {
+    color: var(--emerald-green);
+    margin-top: 10px;
+}
+.booking-group-title.past-title {
+    color: var(--text-secondary);
+}
+
+/* SHOWTIME SELECTOR ELEMENT STYLES */
+.showtime-selector-container {
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+.showtime-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.showtimes-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.showtime-pill {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.showtime-pill:hover {
+    background: rgba(229, 9, 20, 0.15);
+    border-color: var(--cinema-red);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(229, 9, 20, 0.25);
+}
+.showtime-pill.active {
+    background: var(--cinema-red);
+    border-color: var(--cinema-red);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(229, 9, 20, 0.4);
+}
+.showtime-pill .showtime-date {
+    font-size: 10px;
+    opacity: 0.85;
+}
+.showtime-pill .showtime-time {
+    font-size: 13px;
+    font-weight: 700;
+}
+.showtime-empty-msg {
+    color: #ff9800;
+    font-size: 13px;
+    font-weight: 500;
+}
+

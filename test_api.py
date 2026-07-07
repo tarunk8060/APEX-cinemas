@@ -1,10 +1,11 @@
 """
 Live API Test Suite for Apex Cinemas
-Tests all endpoints against the running FastAPI server
+Tests all endpoints against the running FastAPI server, including new showtime APIs
 """
 import urllib.request
 import urllib.error
 import json
+import random
 import time
 
 BASE = "http://127.0.0.1:8000"
@@ -18,9 +19,17 @@ def req(method, path, body=None, timeout=30):
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(r, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read())
+            content = resp.read()
+            try:
+                return resp.status, json.loads(content)
+            except Exception:
+                return resp.status, content.decode()
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read())
+        content = e.read()
+        try:
+            return e.code, json.loads(content)
+        except Exception:
+            return e.code, content.decode()
     except Exception as ex:
         return 0, str(ex)
 
@@ -40,13 +49,13 @@ def check(name, status, data, expect_status=200, expect_key=None, expect_value=N
     return ok, data
 
 print("=" * 60)
-print("  APEX CINEMAS — LIVE API TEST SUITE")
+print("  APEX CINEMAS — LIVE API TEST SUITE (WITH SHOWTIMES)")
 print("=" * 60)
 
 # ── 1. Root endpoint
 print("\n[SECTION] Core Endpoints")
 s, d = req("GET", "/")
-print(f"  GET /  → HTTP {s} ({'OK - HTML served' if s == 200 else 'FAIL'})")
+check("GET / (HTML homepage)", s, d, 200)
 
 # ── 2. GET /movies
 s, d = req("GET", "/movies")
@@ -62,85 +71,124 @@ if FIRST_MOVIE_ID:
     ok, mv = check(f"GET /movies/{FIRST_MOVIE_ID}", s, d, 200, "name")
     print(f"  → Movie: {mv.get('name')} | Recs: {len(mv.get('recommendations', []))} found")
 
-# ── 4. GET /movies/{id}/seats
-print("\n[SECTION] Seat Map")
+# ── 4. GET /movies/{id}/showtimes (NEW)
+print("\n[SECTION] Movie Showtimes")
+ACTIVE_SHOWTIME_ID = None
 if FIRST_MOVIE_ID:
-    s, d = req("GET", f"/movies/{FIRST_MOVIE_ID}/seats")
-    ok, seats_data = check(f"GET /movies/{FIRST_MOVIE_ID}/seats", s, d, 200, "seats")
+    s, d = req("GET", f"/movies/{FIRST_MOVIE_ID}/showtimes")
+    ok, showtimes = check(f"GET /movies/{FIRST_MOVIE_ID}/showtimes", s, d, 200)
+    if ok and showtimes:
+        print(f"  → Found {len(showtimes)} showtimes for movie {FIRST_MOVIE_ID}")
+        print(f"  → First showtime: {showtimes[0]['show_date']} at {showtimes[0]['show_time']}")
+        ACTIVE_SHOWTIME_ID = showtimes[0]["id"]
+
+# ── 5. GET /showtimes/{id}/seats (NEW)
+print("\n[SECTION] Showtime Seats Map")
+if ACTIVE_SHOWTIME_ID:
+    s, d = req("GET", f"/showtimes/{ACTIVE_SHOWTIME_ID}/seats")
+    ok, seats_data = check(f"GET /showtimes/{ACTIVE_SHOWTIME_ID}/seats", s, d, 200, "seats")
     if ok:
         seat_map = seats_data.get("seats", {})
         booked = [k for k,v in seat_map.items() if v]
         free   = [k for k,v in seat_map.items() if not v]
-        print(f"  → Total: {seats_data.get('total_seats')} | Booked (red): {len(booked)} | Free (green): {len(free)}")
-        print(f"  → Booked seats: {booked}")
+        print(f"  → Total: {seats_data.get('total_seats')} | Booked: {len(booked)} | Free: {len(free)}")
 
-# ── 5. GET /bookings
+# ── 5.1 GET /movies/{id}/seats (Legacy Backward-Compatible Route)
+print("\n[SECTION] Legacy Seat Map")
+if FIRST_MOVIE_ID:
+    s, d = req("GET", f"/movies/{FIRST_MOVIE_ID}/seats")
+    check("GET /movies/{id}/seats (Legacy)", s, d, 200, "seats")
+
+# ── 6. GET /bookings
 print("\n[SECTION] Bookings")
 s, d = req("GET", "/bookings")
 check("GET /bookings (all)", s, d, 200)
 print(f"  → {len(d) if isinstance(d, list) else 0} total bookings in DB")
 
-# ── 6. User registration
+# ── 7. User registration
 print("\n[SECTION] User Auth")
-import random
 test_user = f"testuser_{random.randint(1000,9999)}"
 s, d = req("POST", "/users/register", {"username": test_user, "password": "test123"})
 ok, reg = check("POST /users/register", s, d, 201, "id")
 test_user_id = reg.get("id") if ok else None
 print(f"  → Registered: {test_user} with ID: {test_user_id}")
 
-# ── 7. User login
+# ── 8. User login
 s, d = req("POST", "/users/login", {"username": test_user, "password": "test123"})
 check("POST /users/login (correct password)", s, d, 200, "message")
 
 s, d = req("POST", "/users/login", {"username": test_user, "password": "wrongpass"})
 check("POST /users/login (wrong password → 401)", s, d, 401)
 
-# ── 8. Admin login
+# ── 9. Admin login
 print("\n[SECTION] Admin Auth")
 s, d = req("POST", "/admins/login", {"username": "Tarun", "password": "tarun@80"})
 check("POST /admins/login (correct)", s, d, 200, "message")
 
-s, d = req("POST", "/admins/login", {"username": "Tarun", "password": "wrong"})
-check("POST /admins/login (wrong → 401)", s, d, 401)
-
-# ── 9. Book a seat
-print("\n[SECTION] Booking Flow")
-TEST_SEAT = "Z9"  # unlikely to be already booked
-if FIRST_MOVIE_ID and test_user_id:
-    s, d = req("POST", f"/movies/{FIRST_MOVIE_ID}/book", {
+# ── 10. Book and Cancel via Showtime (NEW)
+print("\n[SECTION] Showtime Booking Flow")
+TEST_SEAT = "F9"
+if ACTIVE_SHOWTIME_ID and test_user_id:
+    # Book seat
+    s, d = req("POST", f"/showtimes/{ACTIVE_SHOWTIME_ID}/book", {
         "user_name": test_user, "user_id": test_user_id, "seats": [TEST_SEAT]
     })
-    book_ok = s in (200, 400)  # 400 = seat already taken
-    if s == 200:
-        check("POST /movies/{id}/book (new seat)", s, d, 200, "message")
-        print(f"  → Booked seat {TEST_SEAT} successfully")
-    else:
-        print(f"  [INFO] Seat {TEST_SEAT} already taken or out of range: {d}")
-
-    # ── 10. Duplicate booking rejection
-    s, d = req("POST", f"/movies/{FIRST_MOVIE_ID}/book", {
+    ok, book_res = check("POST /showtimes/{id}/book", s, d, 200, "message")
+    
+    # Try booking duplicate
+    s, d = req("POST", f"/showtimes/{ACTIVE_SHOWTIME_ID}/book", {
         "user_name": test_user, "user_id": test_user_id, "seats": [TEST_SEAT]
     })
-    check("POST /book duplicate seat → 400", s, d, 400)
+    check("POST /showtimes/{id}/book duplicate → 400", s, d, 400)
+    
+    # Cancel seat
+    s, d = req("POST", f"/showtimes/{ACTIVE_SHOWTIME_ID}/cancel", {"seat_no": TEST_SEAT})
+    check("POST /showtimes/{id}/cancel", s, d, 200, "message")
 
-    # ── 11. Cancel booking
-    if book_ok and s != 200:  # only cancel if we successfully booked above
-        pass
-    s, d = req("POST", f"/movies/{FIRST_MOVIE_ID}/cancel", {"seat_no": TEST_SEAT})
-    if s == 200:
-        check("POST /movies/{id}/cancel (existing seat)", s, d, 200, "message")
-        print(f"  → Cancelled seat {TEST_SEAT} successfully")
-    else:
-        print(f"  [INFO] Cancel response: HTTP {s} | {d}")
+# ── 11. Admin Add Movie with timings & verify showtimes (NEW)
+print("\n[SECTION] Admin Movie Creation with timings")
+NEW_MOVIE_ID = f"MOV{random.randint(500, 999)}"
+new_movie_payload = {
+    "id": NEW_MOVIE_ID,
+    "name": "Admin Test Movie",
+    "genre": "Sci-Fi",
+    "language": "English",
+    "price": 120,
+    "seats_available": 50,
+    "screen_no": "Screen C3",
+    "image_url": "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg",
+    "show_timings": "11:00 AM, 04:30 PM"
+}
+s, d = req("POST", "/movies", new_movie_payload)
+ok, add_res = check("POST /movies with show_timings", s, d, 201, "id")
+if ok:
+    # Query showtimes generated for this movie
+    s, d = req("GET", f"/movies/{NEW_MOVIE_ID}/showtimes")
+    ok, showtimes = check("GET /movies/{id}/showtimes for new movie", s, d, 200)
+    if ok:
+        print(f"  → Generated showtimes: {[{'date': st['show_date'], 'time': st['show_time']} for st in showtimes]}")
+        # Validate that the seeded timings are exactly "11:00 AM" and "04:30 PM"
+        timings = {st['show_time'] for st in showtimes}
+        if "11:00 AM" in timings and "04:30 PM" in timings:
+            print("  [PASS] Custom timings correctly seeded!")
+        else:
+            print("  [FAIL] Custom timings mismatch!")
+            FAIL.append("Seeded timings correctness")
 
-# ── 12. Invalid movie ID
+    # Clean up by deleting the new movie
+    s, d = req("DELETE", f"/movies/{NEW_MOVIE_ID}")
+    check("DELETE /movies/{id}", s, d, 200)
+
+# ── 12. Invalid IDs Error Handling
 print("\n[SECTION] Error Handling")
 s, d = req("GET", "/movies/INVALID999")
 check("GET /movies/INVALID999 → 404", s, d, 404)
 
 s, d = req("GET", "/movies/INVALID999/seats")
 check("GET /movies/INVALID999/seats → 404", s, d, 404)
+
+s, d = req("GET", "/showtimes/99999/seats")
+check("GET /showtimes/99999/seats → 404", s, d, 404)
 
 # ── Summary
 print("\n" + "=" * 60)

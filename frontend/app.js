@@ -8,6 +8,12 @@ const state = {
     selectedMovie: null,
     selectedSeats: [],
     bookedSeats: {}, // seat_no -> user_id
+    selectedShowtimeId: null,
+    showtimes: [],
+    cancelShowtimeId: null,
+    cancelMoviePrice: 0,
+    userBookedSeatsForCancel: [],
+    seatsSelectedForCancel: [],
 };
 
 const BASE_URL = (() => {
@@ -33,6 +39,67 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.className = 'toast-notification';
     }, 3500);
+}
+
+// -------------------------------------------------------------
+// UNIVERSAL MODAL ENGINE
+// -------------------------------------------------------------
+let _modalAction = null;
+
+/**
+ * showModal({ type, icon, title, subtitle, details, confirmLabel, confirmIcon, onConfirm })
+ * type: 'success' | 'danger' | 'warning' | 'info'
+ * details: array of { label, value, highlight? }
+ */
+function showModal({ type = 'info', icon = 'fa-circle-question', title = 'Are you sure?',
+    subtitle = '', details = [], confirmLabel = 'Confirm',
+    confirmIcon = 'fa-check', onConfirm }) {
+
+    _modalAction = onConfirm;
+
+    // Set icon badge
+    const badge = document.getElementById('modal-icon-badge');
+    badge.className = `modal-icon-badge type-${type}`;
+    document.getElementById('modal-icon').className = `fa-solid ${icon}`;
+
+    // Set text
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-subtitle').textContent = subtitle;
+
+    // Build detail rows
+    const box = document.getElementById('modal-detail-box');
+    box.innerHTML = details.map(d => `
+        <div class="modal-detail-row">
+            <span class="detail-label">${d.label}</span>
+            <span class="detail-value${d.highlight ? ' highlight' : ''}">${d.value}</span>
+        </div>`).join('');
+
+    // Style confirm button
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    confirmBtn.className = `btn modal-btn type-${type}`;
+    document.getElementById('modal-confirm-icon').className = `fa-solid ${confirmIcon}`;
+    document.getElementById('modal-confirm-label').textContent = confirmLabel;
+
+    // Show overlay
+    document.getElementById('confirm-modal-overlay').classList.remove('hidden');
+}
+
+function closeConfirmModal() {
+    _modalAction = null;
+    document.getElementById('confirm-modal-overlay').classList.add('hidden');
+}
+
+function runModalAction() {
+    const action = _modalAction;
+    closeConfirmModal();
+    if (typeof action === 'function') action();
+}
+
+function handleModalOverlayClick(e) {
+    // Close if clicking the backdrop (not the card itself)
+    if (e.target === document.getElementById('confirm-modal-overlay')) {
+        closeConfirmModal();
+    }
 }
 
 async function apiRequest(endpoint, options = {}) {
@@ -236,7 +303,7 @@ function onLoginSuccess() {
     if (savedView) {
         if (savedView === 'admin' && state.currentUser.role !== 'admin') {
             showView('catalog');
-        } else if (savedView === 'booking') {
+        } else if (savedView === 'booking' || savedView === 'cancel-booking') {
             // Safe fallback if refreshed on booking subview (since selectedMovie is in-memory)
             showView('catalog');
         } else {
@@ -252,28 +319,33 @@ function onLoginSuccess() {
 }
 
 function handleLogout() {
-    if (confirm('Are you sure you want to log out?')) {
-        state.currentUser = null;
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('activeView');
+    showModal({
+        type: 'warning',
+        icon: 'fa-right-from-bracket',
+        title: 'Log Out?',
+        subtitle: 'You will be returned to the login screen.',
+        confirmLabel: 'Log Out',
+        confirmIcon: 'fa-right-from-bracket',
+        onConfirm: () => {
+            state.currentUser = null;
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('activeView');
 
-        // Hide Main App & Reset Navs
-        document.getElementById('app-layout').classList.add('hidden');
-        document.getElementById('auth-overlay').classList.remove('hidden');
+            document.getElementById('app-layout').classList.add('hidden');
+            document.getElementById('auth-overlay').classList.remove('hidden');
 
-        // Reset login inputs
-        document.getElementById('user-login-name').value = '';
-        document.getElementById('user-login-pass').value = '';
-        document.getElementById('user-reg-name').value = '';
-        document.getElementById('user-reg-pass').value = '';
-        document.getElementById('admin-login-name').value = '';
-        document.getElementById('admin-login-pass').value = '';
+            document.getElementById('user-login-name').value = '';
+            document.getElementById('user-login-pass').value = '';
+            document.getElementById('user-reg-name').value = '';
+            document.getElementById('user-reg-pass').value = '';
+            document.getElementById('admin-login-name').value = '';
+            document.getElementById('admin-login-pass').value = '';
 
-        toggleUserAuthMode('login');
-        switchAuthTab('user');
-
-        showToast('Logged out successfully.', 'info');
-    }
+            toggleUserAuthMode('login');
+            switchAuthTab('user');
+            showToast('Logged out successfully.', 'info');
+        }
+    });
 }
 
 // -------------------------------------------------------------
@@ -339,12 +411,12 @@ async function loadCatalog() {
                             });
                         }
                     });
-                    
+
                     const sortedGenres = Object.keys(genreCounts).sort((a, b) => genreCounts[b] - genreCounts[a]);
-                    
+
                     if (sortedGenres.length > 0) {
                         const topGenres = sortedGenres.slice(0, 2); // Use top 2 genres
-                        
+
                         movies.sort((a, b) => {
                             const aScore = (a.genre || '').split(' ').filter(g => topGenres.includes(g)).length;
                             const bScore = (b.genre || '').split(' ').filter(g => topGenres.includes(g)).length;
@@ -429,6 +501,8 @@ async function startBooking(movieId) {
         const movie = await apiRequest(`/movies/${movieId}`);
         state.selectedMovie = movie;
         state.selectedSeats = [];
+        state.selectedShowtimeId = null;
+        state.showtimes = [];
 
         // Show Booking Page
         showView('booking');
@@ -439,33 +513,108 @@ async function startBooking(movieId) {
         document.getElementById('summary-movie-lang').textContent = movie.language;
         document.getElementById('summary-movie-screen').textContent = movie.screen_no;
         document.getElementById('summary-movie-price').textContent = `₹${movie.price}`;
+        document.getElementById('summary-movie-date').textContent = 'N/A';
+        document.getElementById('summary-movie-time').textContent = 'N/A';
 
         updateReceiptDisplay();
 
-        // Load Seats Map from API
-        const seatData = await apiRequest(`/movies/${movieId}/seats`);
+        // Load Showtimes Map from API
+        const showtimes = await apiRequest(`/movies/${movieId}/showtimes`);
+        state.showtimes = showtimes;
+        renderShowtimes(showtimes);
+
+        // Display placeholder in the seat selector until showtime is selected
+        document.getElementById('seat-layout-grid').innerHTML = `
+            <div class="text-center w-full" style="grid-column: 1 / -1; padding: 40px 0;">
+                <p class="subtitle showtime-empty-msg"><i class="fa-solid fa-circle-info"></i> Please select a showtime above to view available seats.</p>
+            </div>
+        `;
+
+        renderRecommendations(movie.recommendations || []);
+    } catch (err) {
+        showToast('Error initializing booking details: ' + err.message, 'error');
+    }
+}
+
+function renderShowtimes(showtimes) {
+    const container = document.getElementById('showtimes-list');
+    container.innerHTML = '';
+
+    if (showtimes.length === 0) {
+        container.innerHTML = '<p class="showtime-empty-msg"><i class="fa-solid fa-triangle-exclamation"></i> No showtimes scheduled for this movie.</p>';
+        return;
+    }
+
+    showtimes.forEach(st => {
+        const pill = document.createElement('div');
+        pill.className = 'showtime-pill';
+        pill.dataset.id = st.id;
+
+        // Format the date if it's YYYY-MM-DD
+        let displayDate = st.show_date;
+        try {
+            const dateObj = new Date(st.show_date);
+            if (!isNaN(dateObj.getTime())) {
+                displayDate = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', weekday: 'short' });
+            }
+        } catch (e) {}
+
+        pill.innerHTML = `
+            <span class="showtime-date">${displayDate}</span>
+            <span class="showtime-time">${st.show_time}</span>
+        `;
+        pill.onclick = () => selectShowtime(st.id);
+        container.appendChild(pill);
+    });
+}
+
+async function selectShowtime(showtimeId) {
+    try {
+        state.selectedShowtimeId = showtimeId;
+        state.selectedSeats = [];
+        updateReceiptDisplay();
+
+        // Highlight active pill
+        document.querySelectorAll('.showtime-pill').forEach(pill => {
+            if (parseInt(pill.dataset.id) === showtimeId) {
+                pill.classList.add('active');
+            } else {
+                pill.classList.remove('active');
+            }
+        });
+
+        // Update summary Date and Time
+        const selectedSt = state.showtimes.find(st => st.id === showtimeId);
+        if (selectedSt) {
+            document.getElementById('summary-movie-date').textContent = selectedSt.show_date;
+            document.getElementById('summary-movie-time').textContent = selectedSt.show_time;
+        }
+
+        // Load Seat Map for the showtime
+        const gridContainer = document.getElementById('seat-layout-grid');
+        gridContainer.innerHTML = '<p class="subtitle text-center">Loading seat map...</p>';
+
+        const seatData = await apiRequest(`/showtimes/${showtimeId}/seats`);
         state.bookedSeats = seatData.seats; // seat_no -> boolean (true: booked, false: available)
 
-        // In order to distinguish who booked, fetch user_id mappings from all bookings
+        // Fetch bookings to know who booked what (for color-coding)
         const allBookings = await apiRequest('/bookings');
-        const userSeatMappings = {}; // seat_no -> user_id
+        const userSeatMappings = {};
         allBookings.forEach(booking => {
-            if (booking.movie_id === movieId) {
+            if (booking.showtime_id === showtimeId) {
                 userSeatMappings[booking.seat_no] = booking.user_id || 'Anonymous';
             }
         });
 
-        // Map seat states: null for available, user_id for booked
         const seatStatesMap = {};
         for (const seatNo in state.bookedSeats) {
             const isBooked = state.bookedSeats[seatNo];
             seatStatesMap[seatNo] = isBooked ? (userSeatMappings[seatNo] || 'Anonymous') : null;
         }
 
-        renderSeatGrid(movie.seats_available, seatStatesMap);
-        renderRecommendations(movie.recommendations || []);
+        renderSeatGrid(state.selectedMovie.seats_available, seatStatesMap);
     } catch (err) {
-        showToast('Error initializing seat selector: ' + err.message, 'error');
+        showToast('Error loading seats: ' + err.message, 'error');
     }
 }
 
@@ -555,40 +704,62 @@ function updateReceiptDisplay() {
     document.getElementById('summary-selected-seats').textContent = `Selected Seats: ${seatsText}`;
     document.getElementById('summary-ticket-count').textContent = `Total Tickets: ${state.selectedSeats.length}`;
 
-    const totalPrice = state.selectedSeats.length * state.selectedMovie.price;
+    const totalPrice = state.selectedSeats.length * (state.selectedMovie ? state.selectedMovie.price : 0);
     document.getElementById('summary-total-price').textContent = `₹${totalPrice}`;
 
     // Enable/disable confirm button
     const confirmBtn = document.getElementById('confirm-booking-btn');
-    confirmBtn.disabled = state.selectedSeats.length === 0;
+    confirmBtn.disabled = (state.selectedSeats.length === 0 || !state.selectedShowtimeId);
 }
 
-async function handleConfirmBooking() {
-    if (state.selectedSeats.length === 0) return;
+function handleConfirmBooking() {
+    if (state.selectedSeats.length === 0 || !state.selectedShowtimeId) return;
 
     const movie = state.selectedMovie;
+    const selectedSt = state.showtimes.find(st => st.id === state.selectedShowtimeId);
+    const dateStr = selectedSt ? selectedSt.show_date : 'N/A';
+    const timeStr = selectedSt ? selectedSt.show_time : 'N/A';
     const seatsStr = state.selectedSeats.join(', ');
     const price = state.selectedSeats.length * movie.price;
 
-    if (confirm(`Confirm Reservation?\n\nMovie: ${movie.name}\nSeats: ${seatsStr}\nTotal Price: ₹${price}`)) {
-        try {
-            await apiRequest(`/movies/${movie.id}/book`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    user_name: state.currentUser.username,
-                    user_id: state.currentUser.id,
-                    seats: state.selectedSeats
-                })
-            });
-
-            showToast('Seats reserved successfully! Enjoy your show.', 'success');
-            showView('bookings');
-        } catch (err) {
-            showToast('Booking failed: ' + err.message, 'error');
-            // Reload page to avoid conflict
-            startBooking(movie.id);
+    showModal({
+        type: 'success',
+        icon: 'fa-ticket',
+        title: 'Confirm Reservation',
+        subtitle: 'Review your booking details below.',
+        details: [
+            { label: 'Movie', value: movie.name },
+            { label: 'Language', value: movie.language },
+            { label: 'Screen', value: movie.screen_no },
+            { label: 'Date', value: dateStr },
+            { label: 'Time', value: timeStr },
+            { label: 'Seats', value: seatsStr },
+            { label: 'Total Price', value: `\u20B9${price}`, highlight: true }
+        ],
+        confirmLabel: 'Book Now',
+        confirmIcon: 'fa-check-circle',
+        onConfirm: async () => {
+            try {
+                await apiRequest(`/showtimes/${state.selectedShowtimeId}/book`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_name: state.currentUser.username,
+                        user_id: state.currentUser.id,
+                        seats: state.selectedSeats
+                    })
+                });
+                showToast('Seats reserved successfully! Enjoy your show.', 'success');
+                showView('bookings');
+            } catch (err) {
+                showToast('Booking failed: ' + err.message, 'error');
+                if (selectedSt) {
+                    selectShowtime(state.selectedShowtimeId);
+                } else {
+                    startBooking(movie.id);
+                }
+            }
         }
-    }
+    });
 }
 
 function renderRecommendations(recs) {
@@ -634,7 +805,6 @@ async function loadBookings() {
     listContainer.innerHTML = '<p class="subtitle text-center">Fetching reservations list...</p>';
 
     try {
-        // Query filter by user id
         const result = await apiRequest(`/bookings?user_id=${state.currentUser.id}`);
 
         if (result.length === 0) {
@@ -648,50 +818,318 @@ async function loadBookings() {
         }
 
         listContainer.innerHTML = '';
-        result.forEach(booking => {
-            // Find movie detail in local state if available to extract metadata
-            const movie = state.movies.find(m => m.id === booking.movie_id) || { name: 'Odyssey Feature', language: 'N/A', screen_no: 'N/A', price: 0 };
 
-            const card = document.createElement('div');
-            card.className = 'booking-row-card glass-card';
-            card.innerHTML = `
-                <div class="booking-indicator-bar"></div>
-                <div class="booking-info-block">
-                    <h4 class="booking-movie-header">${escapeHTML(movie.name)} (${escapeHTML(movie.language)})</h4>
-                    <p class="booking-meta-details">
-                        <i class="fa-solid fa-desktop"></i> Screen: ${escapeHTML(movie.screen_no)}  |  
-                        <i class="fa-solid fa-chair"></i> Seat: ${escapeHTML(booking.seat_no)}  |  
-                        <i class="fa-solid fa-indian-rupee-sign"></i> Price: ₹${movie.price}
-                    </p>
-                </div>
-                <div class="booking-actions">
-                    <button class="btn btn-danger btn-sm" onclick="cancelBooking('${booking.movie_id}', '${booking.seat_no}', ${movie.price})">
-                        <i class="fa-solid fa-circle-xmark"></i> Cancel Booking
-                    </button>
-                </div>
-            `;
-            listContainer.appendChild(card);
+        const activeBookings = result.filter(b => !b.is_expired);
+        const pastBookings = result.filter(b => b.is_expired);
+
+        // Group Active Bookings by showtime_id
+        const groupedActive = {};
+        activeBookings.forEach(booking => {
+            const key = booking.showtime_id;
+            if (!groupedActive[key]) {
+                groupedActive[key] = {
+                    showtime_id: booking.showtime_id,
+                    movie_id: booking.movie_id,
+                    movie_name: booking.movie_name,
+                    show_date: booking.show_date,
+                    show_time: booking.show_time,
+                    seats: [],
+                };
+            }
+            groupedActive[key].seats.push(booking.seat_no);
         });
+
+        // Group Past/Expired Bookings by showtime_id
+        const groupedPast = {};
+        pastBookings.forEach(booking => {
+            const key = booking.showtime_id;
+            if (!groupedPast[key]) {
+                groupedPast[key] = {
+                    showtime_id: booking.showtime_id,
+                    movie_id: booking.movie_id,
+                    movie_name: booking.movie_name,
+                    show_date: booking.show_date,
+                    show_time: booking.show_time,
+                    seats: [],
+                };
+            }
+            groupedPast[key].seats.push(booking.seat_no);
+        });
+
+        // 1. Render Active Bookings
+        const activeList = Object.values(groupedActive);
+        if (activeList.length > 0) {
+            const activeHeader = document.createElement('div');
+            activeHeader.className = 'booking-group-title active-title';
+            activeHeader.innerHTML = '<i class="fa-solid fa-ticket"></i> Active Reservations';
+            listContainer.appendChild(activeHeader);
+
+            activeList.forEach(booking => {
+                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: 0 };
+                const card = document.createElement('div');
+                card.className = 'booking-row-card glass-card';
+                
+                // Sort seats alphabetically
+                booking.seats.sort((a, b) => {
+                    const aRow = a[0], bRow = b[0];
+                    const aNum = parseInt(a.slice(1)), bNum = parseInt(b.slice(1));
+                    if (aRow !== bRow) return aRow.localeCompare(bRow);
+                    return aNum - bNum;
+                });
+                
+                const seatsStr = booking.seats.join(', ');
+                const totalCost = booking.seats.length * movie.price;
+
+                card.innerHTML = `
+                    <div class="booking-indicator-bar"></div>
+                    <div class="booking-info-block">
+                        <h4 class="booking-movie-header">${escapeHTML(movie.name)} (${escapeHTML(movie.language || 'N/A')})</h4>
+                        <p class="booking-meta-details">
+                            <i class="fa-solid fa-desktop"></i> Screen: ${escapeHTML(movie.screen_no)}  |  
+                            <i class="fa-solid fa-calendar-days"></i> ${escapeHTML(booking.show_date)}  |  
+                            <i class="fa-solid fa-clock"></i> ${escapeHTML(booking.show_time)}  |  
+                            <i class="fa-solid fa-chair"></i> Seats: ${escapeHTML(seatsStr)}  |  
+                            <i class="fa-solid fa-indian-rupee-sign"></i> Total: ₹${totalCost}
+                        </p>
+                    </div>
+                    <div class="booking-actions">
+                        <button class="btn btn-danger btn-sm" onclick="startCancellation(${booking.showtime_id}, ['${booking.seats.join("','")}'])">
+                            <i class="fa-solid fa-circle-xmark"></i> Cancel Booking
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+        }
+
+        // 2. Render Past/Expired Bookings
+        const pastList = Object.values(groupedPast);
+        if (pastList.length > 0) {
+            const pastHeader = document.createElement('div');
+            pastHeader.className = 'booking-group-title past-title';
+            pastHeader.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i> Previous Bookings (Expired after 24 hrs)';
+            listContainer.appendChild(pastHeader);
+
+            pastList.forEach(booking => {
+                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: 0 };
+                const card = document.createElement('div');
+                card.className = 'booking-row-card glass-card expired';
+                
+                // Sort seats alphabetically
+                booking.seats.sort((a, b) => {
+                    const aRow = a[0], bRow = b[0];
+                    const aNum = parseInt(a.slice(1)), bNum = parseInt(b.slice(1));
+                    if (aRow !== bRow) return aRow.localeCompare(bRow);
+                    return aNum - bNum;
+                });
+                
+                const seatsStr = booking.seats.join(', ');
+                const totalCost = booking.seats.length * movie.price;
+
+                card.innerHTML = `
+                    <div class="booking-indicator-bar"></div>
+                    <div class="booking-info-block">
+                        <h4 class="booking-movie-header">${escapeHTML(movie.name)} (${escapeHTML(movie.language || 'N/A')})</h4>
+                        <p class="booking-meta-details">
+                            <i class="fa-solid fa-desktop"></i> Screen: ${escapeHTML(movie.screen_no)}  |  
+                            <i class="fa-solid fa-calendar-days"></i> ${escapeHTML(booking.show_date)}  |  
+                            <i class="fa-solid fa-clock"></i> ${escapeHTML(booking.show_time)}  |  
+                            <i class="fa-solid fa-chair"></i> Seats: ${escapeHTML(seatsStr)}  |  
+                            <i class="fa-solid fa-indian-rupee-sign"></i> Total: ₹${totalCost}
+                        </p>
+                    </div>
+                    <div class="booking-actions">
+                        <span class="badge-expired"><i class="fa-solid fa-clock"></i> Expired</span>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+        }
+
     } catch (err) {
         showToast('Error loading bookings: ' + err.message, 'error');
         listContainer.innerHTML = '<p class="subtitle text-center highlight">Failed to fetch bookings. Database connectivity error.</p>';
     }
 }
 
-async function cancelBooking(movieId, seatNo, refundAmt) {
-    if (confirm(`Cancel Booking?\n\nAre you sure you want to cancel seat ${seatNo}?\nThis will issue a refund of ₹${refundAmt}.`)) {
-        try {
-            await apiRequest(`/movies/${movieId}/cancel`, {
-                method: 'POST',
-                body: JSON.stringify({ seat_no: seatNo })
-            });
+// -------------------------------------------------------------
+// INTERACTIVE SEAT CANCELLATION FLOW
+// -------------------------------------------------------------
+async function startCancellation(showtimeId, seats) {
+    try {
+        state.cancelShowtimeId = showtimeId;
+        state.userBookedSeatsForCancel = [...seats];
+        state.seatsSelectedForCancel = [];
 
-            showToast('Reservation cancelled. Refund has been initiated.', 'success');
-            loadBookings();
-        } catch (err) {
-            showToast('Cancellation failed: ' + err.message, 'error');
+        // Load showtime and movie information
+        const seatData = await apiRequest(`/showtimes/${showtimeId}/seats`);
+        const movie = state.movies.find(m => m.id === seatData.movie_id) || { name: 'Odyssey Feature', price: 150 };
+        state.cancelMoviePrice = movie.price;
+
+        // Open Cancellation View
+        showView('cancel-booking');
+
+        // Load Receipt Details
+        document.getElementById('cancel-booking-title').textContent = `Cancel Tickets for ${movie.name}`;
+        document.getElementById('cancel-summary-movie-name').textContent = movie.name;
+        document.getElementById('cancel-summary-movie-date').textContent = seatData.show_date;
+        document.getElementById('cancel-summary-movie-time').textContent = seatData.show_time;
+
+        updateCancellationDisplay();
+
+        // Build Seat States Map:
+        // user_booked -> current user's seat
+        // others_booked -> other user's seat
+        // null -> free seat
+        const seatStatesMap = {};
+        for (const seatNo in seatData.seats) {
+            const isBooked = seatData.seats[seatNo];
+            if (isBooked) {
+                if (seats.includes(seatNo)) {
+                    seatStatesMap[seatNo] = 'user_booked';
+                } else {
+                    seatStatesMap[seatNo] = 'others_booked';
+                }
+            } else {
+                seatStatesMap[seatNo] = null;
+            }
         }
+
+        renderCancelSeatGrid(movie.seats_available, seatStatesMap);
+    } catch (err) {
+        showToast('Error loading cancellation seating map: ' + err.message, 'error');
     }
+}
+
+function renderCancelSeatGrid(totalSeats, seatStatesMap) {
+    const gridContainer = document.getElementById('cancel-seat-layout-grid');
+    gridContainer.innerHTML = '';
+
+    const displaySeats = Math.min(totalSeats, 150);
+    const cols = 10;
+    const rowsCount = Math.ceil(displaySeats / cols);
+    const rowLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    for (let r = 0; r < rowsCount; r++) {
+        const letter = rowLetters[r];
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'seat-row';
+
+        // Row letter on left
+        const label = document.createElement('span');
+        label.className = 'row-label';
+        label.textContent = letter;
+        rowDiv.appendChild(label);
+
+        for (let c = 0; c < cols; c++) {
+            const seatNum = c + 1;
+            const seatNo = `${letter}${seatNum}`;
+
+            if (c === 5) {
+                const spacer = document.createElement('div');
+                spacer.className = 'seat-aisle-spacer';
+                rowDiv.appendChild(spacer);
+            }
+
+            const seatBtn = document.createElement('button');
+            seatBtn.className = 'seat';
+            seatBtn.textContent = seatNum;
+
+            const stateVal = seatStatesMap[seatNo];
+
+            if (stateVal === 'user_booked') {
+                seatBtn.classList.add('your-booking');
+                seatBtn.title = `Your Seat ${seatNo} - Click to cancel`;
+                seatBtn.onclick = () => selectSeatForCancellation(seatNo, seatBtn);
+            } else if (stateVal === 'others_booked') {
+                seatBtn.classList.add('booked');
+                seatBtn.style.opacity = '0.35';
+                seatBtn.style.pointerEvents = 'none';
+                seatBtn.title = 'Reserved';
+            } else {
+                seatBtn.style.opacity = '0.2';
+                seatBtn.style.pointerEvents = 'none';
+                seatBtn.title = 'Available';
+            }
+
+            rowDiv.appendChild(seatBtn);
+        }
+        gridContainer.appendChild(rowDiv);
+    }
+}
+
+function selectSeatForCancellation(seatNo, element) {
+    const idx = state.seatsSelectedForCancel.indexOf(seatNo);
+    if (idx > -1) {
+        state.seatsSelectedForCancel.splice(idx, 1);
+        element.classList.remove('selected');
+        element.classList.add('your-booking');
+    } else {
+        state.seatsSelectedForCancel.push(seatNo);
+        element.classList.remove('your-booking');
+        element.classList.add('selected');
+    }
+
+    // Sort seats alphabetically
+    state.seatsSelectedForCancel.sort((a, b) => {
+        const aRow = a[0], bRow = b[0];
+        const aNum = parseInt(a.slice(1)), bNum = parseInt(b.slice(1));
+        if (aRow !== bRow) return aRow.localeCompare(bRow);
+        return aNum - bNum;
+    });
+
+    updateCancellationDisplay();
+}
+
+function updateCancellationDisplay() {
+    const seatsText = state.seatsSelectedForCancel.length > 0 ? state.seatsSelectedForCancel.join(', ') : 'None';
+    document.getElementById('cancel-summary-seats').textContent = `Selected to Cancel: ${seatsText}`;
+    document.getElementById('cancel-summary-ticket-count').textContent = `Total to Cancel: ${state.seatsSelectedForCancel.length}`;
+
+    const totalRefund = state.seatsSelectedForCancel.length * state.cancelMoviePrice;
+    document.getElementById('cancel-summary-refund').textContent = `₹${totalRefund}`;
+
+    // Enable/disable cancellation button
+    const confirmBtn = document.getElementById('confirm-cancellation-btn');
+    confirmBtn.disabled = state.seatsSelectedForCancel.length === 0;
+}
+
+function handleConfirmCancellation() {
+    if (state.seatsSelectedForCancel.length === 0 || !state.cancelShowtimeId) return;
+
+    const seatsStr = state.seatsSelectedForCancel.join(', ');
+    const totalRefund = state.seatsSelectedForCancel.length * state.cancelMoviePrice;
+
+    showModal({
+        type: 'danger',
+        icon: 'fa-trash-can',
+        title: 'Cancel Reservations?',
+        subtitle: 'The selected seats will be cancelled and deleted.',
+        details: [
+            { label: 'Seats to Cancel', value: seatsStr },
+            { label: 'Total Refund', value: `\u20B9${totalRefund}`, highlight: true }
+        ],
+        confirmLabel: 'Confirm Cancellation',
+        confirmIcon: 'fa-trash-can',
+        onConfirm: async () => {
+            try {
+                // Cancel each selected seat in parallel
+                const promises = state.seatsSelectedForCancel.map(seat =>
+                    apiRequest(`/showtimes/${state.cancelShowtimeId}/cancel`, {
+                        method: 'POST',
+                        body: JSON.stringify({ seat_no: seat })
+                    })
+                );
+                await Promise.all(promises);
+
+                showToast('Selected reservations cancelled successfully. Refund initiated.', 'success');
+                showView('bookings');
+            } catch (err) {
+                showToast('Cancellation failed: ' + err.message, 'error');
+                startCancellation(state.cancelShowtimeId, state.userBookedSeatsForCancel);
+            }
+        }
+    });
 }
 
 // -------------------------------------------------------------
@@ -741,6 +1179,7 @@ async function handleNewMovieSubmit(e) {
     const seatsInput = parseInt(document.getElementById('admin-movie-seats').value);
     const screenInput = document.getElementById('admin-movie-screen').value.trim();
     const imageInput = document.getElementById('admin-movie-image').value.trim() || null;
+    const timingsInput = document.getElementById('admin-movie-timings').value.trim() || null;
 
     try {
         await apiRequest('/movies', {
@@ -753,7 +1192,8 @@ async function handleNewMovieSubmit(e) {
                 price: priceInput,
                 seats_available: seatsInput,
                 screen_no: screenInput,
-                image_url: imageInput
+                image_url: imageInput,
+                show_timings: timingsInput
             })
         });
 
@@ -768,6 +1208,7 @@ async function handleNewMovieSubmit(e) {
         document.getElementById('admin-movie-seats').value = '';
         document.getElementById('admin-movie-screen').value = '';
         document.getElementById('admin-movie-image').value = '';
+        document.getElementById('admin-movie-timings').value = '';
 
         loadAdminPanel();
     } catch (err) {
@@ -775,22 +1216,31 @@ async function handleNewMovieSubmit(e) {
     }
 }
 
-async function deleteMovie(movieId) {
+function deleteMovie(movieId) {
     const movie = state.movies.find(m => m.id === movieId);
     const movieName = movie ? movie.name : 'this movie';
 
-    if (confirm(`Delete Movie '${movieName}'?\n\nWARNING: This will permanently remove the movie and cancel all booked seats for it!`)) {
-        try {
-            const result = await apiRequest(`/movies/${movieId}`, {
-                method: 'DELETE'
-            });
-
-            showToast(result.message || `Movie ${movieName} deleted successfully.`, 'success');
-            loadAdminPanel();
-        } catch (err) {
-            showToast('Deletion failed: ' + err.message, 'error');
+    showModal({
+        type: 'danger',
+        icon: 'fa-trash-can',
+        title: 'Delete Movie?',
+        subtitle: 'This will permanently remove the movie and ALL its bookings.',
+        details: [
+            { label: 'Movie', value: movieName },
+            { label: 'ID', value: movieId }
+        ],
+        confirmLabel: 'Delete',
+        confirmIcon: 'fa-trash-can',
+        onConfirm: async () => {
+            try {
+                const result = await apiRequest(`/movies/${movieId}`, { method: 'DELETE' });
+                showToast(result.message || `Movie ${movieName} deleted successfully.`, 'success');
+                loadAdminPanel();
+            } catch (err) {
+                showToast('Deletion failed: ' + err.message, 'error');
+            }
         }
-    }
+    });
 }
 
 // -------------------------------------------------------------
@@ -813,4 +1263,43 @@ window.onload = () => {
     // Clear user session so it asks for login every time the link is opened
     localStorage.removeItem('currentUser');
     localStorage.removeItem('activeView');
+
+    // Initialize Carousel
+    showSlides(slideIndex);
+    // Auto-advance carousel every 5 seconds
+    setInterval(() => { changeSlide(1); }, 5000);
 };
+
+// -------------------------------------------------------------
+// CAROUSEL LOGIC
+// -------------------------------------------------------------
+let slideIndex = 1;
+
+function changeSlide(n) {
+    showSlides(slideIndex += n);
+}
+
+function currentSlide(n) {
+    showSlides(slideIndex = n);
+}
+
+function showSlides(n) {
+    let i;
+    const slides = document.getElementsByClassName("carousel-slide");
+    const dots = document.getElementsByClassName("carousel-dot");
+
+    if (!slides.length) return; // if not present
+
+    if (n > slides.length) { slideIndex = 1 }
+    if (n < 1) { slideIndex = slides.length }
+    for (i = 0; i < slides.length; i++) {
+        slides[i].classList.remove("active");
+    }
+    for (i = 0; i < dots.length; i++) {
+        dots[i].classList.remove("active");
+    }
+    slides[slideIndex - 1].classList.add("active");
+    if (dots.length >= slideIndex) {
+        dots[slideIndex - 1].classList.add("active");
+    }
+}

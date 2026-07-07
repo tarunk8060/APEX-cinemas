@@ -587,7 +587,13 @@ class MovieBookingApp(ctk.CTk):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(f"SELECT seat_no, user_id FROM booked_seats WHERE movie_id = {PH}", (movie_id,))
+            cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+            st_row = cursor.fetchone()
+            if not st_row:
+                conn.close()
+                return {}
+            st_id = st_row[0]
+            cursor.execute(f"SELECT seat_no, user_id FROM booked_seats WHERE showtime_id = {PH}", (st_id,))
             rows = cursor.fetchall()
             conn.close()
             return {row[0]: row[1] for row in rows}
@@ -603,24 +609,34 @@ class MovieBookingApp(ctk.CTk):
             # Make sure table exists
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS booked_seats (
-                movie_id TEXT,
+                showtime_id INTEGER,
                 seat_no TEXT,
                 user_name TEXT DEFAULT 'Anonymous',
                 user_id TEXT,
-                PRIMARY KEY(movie_id, seat_no)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(showtime_id, seat_no),
+                FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
             )
             """)
             
+            # Get first showtime ID
+            cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+            st_row = cursor.fetchone()
+            if not st_row:
+                conn.close()
+                return False, "No showtimes found for this movie!"
+            st_id = st_row[0]
+            
             # Check duplicate booking in the meantime
             for seat in seat_list:
-                cursor.execute(f"SELECT 1 FROM booked_seats WHERE movie_id = {PH} AND seat_no = {PH}", (movie_id, seat))
+                cursor.execute(f"SELECT 1 FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}", (st_id, seat))
                 if cursor.fetchone():
                     conn.close()
                     return False, f"Seat {seat} has already been reserved by someone else!"
             
             # Insert booking
             for seat in seat_list:
-                cursor.execute(f"INSERT INTO booked_seats (movie_id, seat_no, user_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH})", (movie_id, seat, user_name, user_id))
+                cursor.execute(f"INSERT INTO booked_seats (showtime_id, seat_no, user_name, user_id, created_at) VALUES ({PH}, {PH}, {PH}, {PH}, datetime('now'))", (st_id, seat, user_name, user_id))
                 
             conn.commit()
             conn.close()
@@ -632,7 +648,13 @@ class MovieBookingApp(ctk.CTk):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(f"DELETE FROM booked_seats WHERE movie_id = {PH} AND seat_no = {PH}", (movie_id, seat_no))
+            cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+            st_row = cursor.fetchone()
+            if not st_row:
+                conn.close()
+                return False
+            st_id = st_row[0]
+            cursor.execute(f"DELETE FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}", (st_id, seat_no))
             conn.commit()
             conn.close()
             return True
@@ -649,17 +671,19 @@ class MovieBookingApp(ctk.CTk):
             # If an admin is logged in, fetch all bookings.
             if self.is_user_logged_in:
                 query = f"""
-                SELECT bs.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
+                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
                 FROM booked_seats bs
-                JOIN movies m ON bs.movie_id = m.id
+                JOIN showtimes s ON bs.showtime_id = s.id
+                JOIN movies m ON s.movie_id = m.id
                 WHERE bs.user_id = {PH}
                 """
                 cursor.execute(query, (self.current_user_id,))
             else:
                 query = f"""
-                SELECT bs.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
+                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
                 FROM booked_seats bs
-                JOIN movies m ON bs.movie_id = m.id
+                JOIN showtimes s ON bs.showtime_id = s.id
+                JOIN movies m ON s.movie_id = m.id
                 """
                 cursor.execute(query)
                 
@@ -709,8 +733,9 @@ class MovieBookingApp(ctk.CTk):
             
             # Delete movie
             cursor.execute(f"DELETE FROM movies WHERE id = {PH}", (movie_id,))
-            # Delete associated bookings
-            cursor.execute(f"DELETE FROM booked_seats WHERE movie_id = {PH}", (movie_id,))
+            # Delete associated showtimes and bookings
+            cursor.execute(f"DELETE FROM booked_seats WHERE showtime_id IN (SELECT id FROM showtimes WHERE movie_id = {PH})", (movie_id,))
+            cursor.execute(f"DELETE FROM showtimes WHERE movie_id = {PH}", (movie_id,))
             
             conn.commit()
             conn.close()

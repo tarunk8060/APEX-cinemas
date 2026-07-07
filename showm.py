@@ -9,7 +9,7 @@ def show_movies():
     conn = sqlite3.connect("movie.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM movies")
+    cursor.execute("SELECT id, name, language, genre, price, seats_available, screen_no FROM movies")
     movies = cursor.fetchall()
 
     if not movies:

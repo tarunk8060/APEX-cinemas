@@ -6,10 +6,13 @@ cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS booked_seats (
-    user_id TEXT,
-    movie_id TEXT,
-    seat_no TEXT,   
-    PRIMARY KEY(user_id,movie_id, seat_no)
+    showtime_id  INTEGER,
+    seat_no      TEXT,
+    user_name    TEXT DEFAULT 'Anonymous',
+    user_id      TEXT,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (showtime_id, seat_no),
+    FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
 )
 """)
 
@@ -51,12 +54,21 @@ class SeatBooking:
             seat_name = f"{row}{seat_num}"
             self.seats[seat_name] = False
 
+        # Get first showtime ID
+        cursor.execute("SELECT id FROM showtimes WHERE movie_id = ? ORDER BY id LIMIT 1", (self.movie_id,))
+        st_row = cursor.fetchone()
+        if not st_row:
+            print("No showtimes found for this movie")
+            conn.close()
+            return
+        self.showtime_id = st_row[0]
+
         # Load booked seats
         cursor.execute("""
         SELECT seat_no
         FROM booked_seats
-        WHERE movie_id = ?
-        """, (self.movie_id,))
+        WHERE showtime_id = ?
+        """, (self.showtime_id,))
 
         booked = cursor.fetchall()
 
@@ -137,9 +149,9 @@ class SeatBooking:
 
         for seat in requested:
             cursor.execute("""
-            INSERT INTO booked_seats(movie_id, seat_no)
-            VALUES (?, ?)
-            """, (self.movie_id, seat))
+            INSERT INTO booked_seats(showtime_id, seat_no, created_at)
+            VALUES (?, ?, datetime('now'))
+            """, (self.showtime_id, seat))
 
             self.seats[seat] = True
 

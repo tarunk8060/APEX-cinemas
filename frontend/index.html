@@ -146,6 +146,26 @@
 
             <!-- 1. CATALOG VIEW -->
             <section id="view-catalog" class="app-view active">
+                <!-- CAROUSEL -->
+                <div class="carousel-container" id="main-carousel">
+                    <div class="carousel-slide fade">
+                        <img src="https://res.cloudinary.com/mrfnjg37/image/upload/f_auto,q_auto/image_4158a38a_waurdj"
+                            alt="Slide 1">
+                    </div>
+                    <div class="carousel-slide fade">
+                        <img src="https://res.cloudinary.com/wn7rgdcj/image/upload/f_auto,q_auto/image_708cc54d_jwyiri"
+                            alt="Slide 2">
+                    </div>
+                    <div class="carousel-slide fade">
+                        <img src="https://res.cloudinary.com/mrfnjg37/image/upload/f_auto,q_auto/image_a5564222_nfpzrr"
+                            alt="Slide 3">
+                    </div>
+                    <div class="carousel-slide fade">
+                        <img src="https://res.cloudinary.com/mrfnjg37/image/upload/f_auto,q_auto/image_7cffa155_kzzyae"
+                            alt="Slide 4">
+                    </div>
+                </div>
+
                 <div class="view-header">
                     <h2>Now Showing</h2>
                     <p class="subtitle">Explore and book tickets for current features</p>
@@ -167,6 +187,14 @@
                 <div class="booking-split-container">
                     <!-- Left: Seat selector -->
                     <div class="seat-selector-panel glass-panel">
+                        <!-- Showtime Selection Container -->
+                        <div class="showtime-selector-container">
+                            <h4 class="showtime-title"><i class="fa-solid fa-calendar-days"></i> Select Showtime</h4>
+                            <div id="showtimes-list" class="showtimes-list">
+                                <!-- Loaded dynamically via app.js -->
+                            </div>
+                        </div>
+
                         <div class="screen-indicator">
                             <span class="screen-glow"></span>
                             <p class="screen-label">STAGE / SCREEN THIS WAY</p>
@@ -220,6 +248,14 @@
                                 <span class="label">Ticket Price:</span>
                                 <span id="summary-movie-price" class="value">₹150</span>
                             </div>
+                            <div class="receipt-row">
+                                <span class="label">Show Date:</span>
+                                <span id="summary-movie-date" class="value">N/A</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Show Time:</span>
+                                <span id="summary-movie-time" class="value">N/A</span>
+                            </div>
                         </div>
 
                         <div class="divider"></div>
@@ -265,6 +301,87 @@
                 </div>
             </section>
 
+            <!-- 5. INTERACTIVE SEAT CANCELLATION VIEW -->
+            <section id="view-cancel-booking" class="app-view">
+                <div class="booking-header">
+                    <button class="btn btn-secondary btn-sm" onclick="showView('bookings')">
+                        <i class="fa-solid fa-arrow-left-long"></i> Back
+                    </button>
+                    <h2 class="booking-movie-title" id="cancel-booking-title">Cancel Tickets</h2>
+                </div>
+
+                <div class="booking-split-container">
+                    <!-- Left: Seat selector for cancellation -->
+                    <div class="seat-selector-panel glass-panel">
+                        <div class="screen-indicator">
+                            <span class="screen-glow"></span>
+                            <p class="screen-label">STAGE / SCREEN THIS WAY</p>
+                        </div>
+
+                        <!-- Seat layout grid for cancellation -->
+                        <div id="cancel-seat-layout-grid" class="seat-layout-grid">
+                            <!-- Loaded dynamically via app.js -->
+                        </div>
+
+                        <!-- Grid Legend -->
+                        <div class="legend-panel">
+                            <div class="legend-item">
+                                <span class="legend-box seat-booked" style="opacity: 0.4;"></span>
+                                <span>Others / Standard</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-box seat-your-booking"></span>
+                                <span>Your Seats (Keep)</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-box seat-selected"></span>
+                                <span>To Cancel</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Cancellation summary panel -->
+                    <div class="checkout-summary-panel glass-panel">
+                        <h3 class="panel-title"><i class="fa-solid fa-trash-can"></i> Cancellation Summary</h3>
+                        <div class="divider"></div>
+
+                        <div class="movie-receipt-details">
+                            <div class="receipt-row">
+                                <span class="label">Movie Name:</span>
+                                <span id="cancel-summary-movie-name" class="value">N/A</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Show Date:</span>
+                                <span id="cancel-summary-movie-date" class="value">N/A</span>
+                            </div>
+                            <div class="receipt-row">
+                                <span class="label">Show Time:</span>
+                                <span id="cancel-summary-movie-time" class="value">N/A</span>
+                            </div>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="booking-tickets-info">
+                            <p id="cancel-summary-seats">Selected to Cancel: None</p>
+                            <p id="cancel-summary-ticket-count">Total to Cancel: 0</p>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="total-price-block">
+                            <span class="total-payable-label">Estimated Refund:</span>
+                            <span id="cancel-summary-refund" class="total-payable-value" style="color: var(--cinema-red);">₹0</span>
+                        </div>
+
+                        <button id="confirm-cancellation-btn" class="btn btn-danger btn-block btn-lg" disabled
+                            onclick="handleConfirmCancellation()">
+                            Confirm Cancellation
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- 4. ADMIN PANEL VIEW -->
             <section id="view-admin" class="app-view">
                 <div class="view-header">
@@ -307,6 +424,10 @@
                                 <input type="url" id="admin-movie-image"
                                     placeholder="Movie Poster Image URL (optional)">
                             </div>
+                            <div class="form-group">
+                                <input type="text" id="admin-movie-timings"
+                                    placeholder="Show Timings (comma-separated, e.g. 11:00 AM, 04:30 PM)">
+                            </div>
                             <button type="submit" class="btn btn-primary btn-block">Add Movie to Database</button>
                         </form>
                     </div>
@@ -327,6 +448,31 @@
 
     <!-- Alert / Toast notification element -->
     <div id="toast-notification" class="toast-notification"></div>
+
+    <!-- Universal Confirm Modal -->
+    <div id="confirm-modal-overlay" class="modal-overlay hidden" onclick="handleModalOverlayClick(event)">
+        <div class="modal-card glass-card" id="modal-card">
+            <!-- Icon Badge -->
+            <div class="modal-icon-badge" id="modal-icon-badge">
+                <i id="modal-icon" class="fa-solid fa-circle-question"></i>
+            </div>
+            <!-- Title & Subtitle -->
+            <h3 class="modal-title" id="modal-title">Are you sure?</h3>
+            <p class="modal-subtitle" id="modal-subtitle"></p>
+            <!-- Detail rows (filled dynamically) -->
+            <div class="modal-detail-box" id="modal-detail-box"></div>
+            <!-- Action Buttons -->
+            <div class="modal-actions">
+                <button class="btn btn-secondary modal-btn" id="modal-cancel-btn" onclick="closeConfirmModal()">
+                    <i class="fa-solid fa-xmark"></i> Cancel
+                </button>
+                <button class="btn modal-btn" id="modal-confirm-btn" onclick="runModalAction()">
+                    <i id="modal-confirm-icon" class="fa-solid fa-check"></i>
+                    <span id="modal-confirm-label">Confirm</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js?v=2"></script>
 </body>

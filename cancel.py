@@ -6,11 +6,20 @@ def cancel_seat():
     conn = sqlite3.connect("movie.db")
     cursor = conn.cursor()
 
+    # Get first showtime ID
+    cursor.execute("SELECT id FROM showtimes WHERE movie_id = ? ORDER BY id LIMIT 1", (movie_id,))
+    st_row = cursor.fetchone()
+    if not st_row:
+        print("No showtimes found for this movie")
+        conn.close()
+        return
+    showtime_id = st_row[0]
+
     cursor.execute("""
     SELECT *
     FROM booked_seats
-    WHERE movie_id = ? AND seat_no = ?
-    """, (movie_id, seat_no))
+    WHERE showtime_id = ? AND seat_no = ?
+    """, (showtime_id, seat_no))
 
     data = cursor.fetchone()
 
@@ -21,8 +30,8 @@ def cancel_seat():
 
     cursor.execute("""
     DELETE FROM booked_seats
-    WHERE movie_id = ? AND seat_no = ?
-    """, (movie_id, seat_no))
+    WHERE showtime_id = ? AND seat_no = ?
+    """, (showtime_id, seat_no))
 
     conn.commit()
     conn.close()

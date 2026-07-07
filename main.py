@@ -9,11 +9,18 @@ from typing import List, Optional
 DATABASE_URL = os.environ.get("DATABASE_URL")
 USE_POSTGRES = bool(DATABASE_URL)
 
+pg_pool = None
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    from psycopg2.pool import ThreadedConnectionPool
     PH = "%s"          # PostgreSQL placeholder
-    print("Using PostgreSQL (Render cloud DB)")
+    print("Using PostgreSQL (Neon / cloud DB)")
+    try:
+        pg_pool = ThreadedConnectionPool(1, 4, DATABASE_URL)
+        print("PostgreSQL connection pool initialized successfully.")
+    except Exception as e:
+        print(f"Failed to initialize PostgreSQL pool: {e}")
 else:
     import sqlite3
     DB_PATH = os.environ.get(
@@ -35,6 +42,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+from fastapi.middleware.gzip import GZipMiddleware
+
 # Enable CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +52,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ─────────────────────────────────────────────────────────────────
 # DB HELPERS
@@ -53,14 +63,26 @@ def lowercase_dict_factory(cursor, row):
 def get_db():
     """FastAPI dependency — yields a DB connection, closes on exit."""
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        if pg_pool:
+            conn = pg_pool.getconn()
+            try:
+                yield conn
+            finally:
+                pg_pool.putconn(conn)
+        else:
+            conn = psycopg2.connect(DATABASE_URL)
+            try:
+                yield conn
+            finally:
+                conn.close()
     else:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         conn.row_factory = lowercase_dict_factory
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+        except Exception:
+            pass
         try:
             yield conn
         finally:
@@ -72,13 +94,99 @@ def get_cursor(conn):
         return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     return conn.cursor()
 
+def seed_default_showtimes_for_movie(cursor, movie_id, use_postgres):
+    import datetime
+    ph = "%s" if use_postgres else "?"
+    cursor.execute(f"SELECT COUNT(*) FROM showtimes WHERE movie_id = {ph}", (movie_id,))
+    count = cursor.fetchone()
+    cnt = count[0] if isinstance(count, (list, tuple)) else count.get("count", count.get("COUNT(*)", 0))
+    if cnt > 0:
+        return
+
+    today = datetime.date.today()
+    timings = ["02:30 PM", "06:30 PM"]
+    for i in range(3):
+        date_str = (today + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+        for time_str in timings:
+            cursor.execute(
+                f"INSERT INTO showtimes (movie_id, show_date, show_time) VALUES ({ph}, {ph}, {ph})",
+                (movie_id, date_str, time_str)
+            )
+
+def cleanup_expired_bookings(db):
+    """Lazy clean-up: moves bookings to past_bookings 24 hours after their showtime has passed."""
+    import datetime
+    cursor = get_cursor(db)
+    try:
+        # Fetch all active bookings with show date and show time
+        query = (
+            "SELECT b.showtime_id, b.seat_no, b.user_name, b.user_id, b.created_at, "
+            "       s.show_date, s.show_time "
+            "FROM booked_seats b "
+            "JOIN showtimes s ON b.showtime_id = s.id"
+        )
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        now = datetime.datetime.now()
+        expired_rows = []
+        
+        for row in rows:
+            r = dict(row) if not isinstance(row, (tuple, list)) else {
+                "showtime_id": row[0],
+                "seat_no": row[1],
+                "user_name": row[2],
+                "user_id": row[3],
+                "created_at": row[4],
+                "show_date": row[5],
+                "show_time": row[6]
+            }
+            
+            show_date_str = r["show_date"]
+            show_time_str = r["show_time"]
+            
+            try:
+                # Combine show date and time to parse
+                show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
+                # Expire booking 24 hours after the show has started
+                if show_dt + datetime.timedelta(hours=24) < now:
+                    expired_rows.append(r)
+            except Exception as parse_err:
+                print(f"Error parsing showtime in cleanup: {parse_err}")
+                
+        if expired_rows:
+            for row in expired_rows:
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "INSERT INTO past_bookings (showtime_id, seat_no, user_name, user_id, created_at) "
+                        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        (row["showtime_id"], row["seat_no"], row["user_name"], row["user_id"], row["created_at"])
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO past_bookings (showtime_id, seat_no, user_name, user_id, created_at) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (row["showtime_id"], row["seat_no"], row["user_name"], row["user_id"], row["created_at"])
+                    )
+                    
+            for row in expired_rows:
+                ph = "%s" if USE_POSTGRES else "?"
+                cursor.execute(
+                    f"DELETE FROM booked_seats WHERE showtime_id = {ph} AND seat_no = {ph}",
+                    (row["showtime_id"], row["seat_no"])
+                )
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error during expired bookings cleanup: {e}")
+
 # ─────────────────────────────────────────────────────────────────
 # STARTUP: Create tables + seed initial movies
 # ─────────────────────────────────────────────────────────────────
 def init_db():
     if USE_POSTGRES:
         conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS movies (
@@ -91,14 +199,58 @@ def init_db():
             screen_no     TEXT NOT NULL,
             image_url     TEXT
         )""")
+        conn.commit()
+
+        # Check if booked_seats needs migration
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='booked_seats' AND column_name='movie_id'")
+        if cur.fetchone():
+            print("Migrating Postgres tables to showtimes...")
+            # 1. Fetch current bookings
+            cur.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM booked_seats")
+            old_booked = cur.fetchall()
+
+            # 2. Fetch past bookings
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='past_bookings' AND column_name='movie_id'")
+            old_past = []
+            if cur.fetchone():
+                cur.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM past_bookings")
+                old_past = cur.fetchall()
+
+            # 3. Drop tables
+            cur.execute("DROP TABLE IF EXISTS booked_seats")
+            cur.execute("DROP TABLE IF EXISTS past_bookings")
+            cur.execute("DROP TABLE IF EXISTS showtimes")
+            conn.commit()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS showtimes (
+            id        SERIAL PRIMARY KEY,
+            movie_id  TEXT NOT NULL,
+            show_date TEXT NOT NULL,
+            show_time TEXT NOT NULL,
+            FOREIGN KEY(movie_id) REFERENCES movies(id) ON DELETE CASCADE
+        )""")
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS booked_seats (
-            movie_id  TEXT,
-            seat_no   TEXT,
-            user_name TEXT DEFAULT 'Anonymous',
-            user_id   TEXT,
-            PRIMARY KEY (movie_id, seat_no)
+            showtime_id  INTEGER,
+            seat_no      TEXT,
+            user_name    TEXT DEFAULT 'Anonymous',
+            user_id      TEXT,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (showtime_id, seat_no),
+            FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
+        )""")
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS past_bookings (
+            id           SERIAL PRIMARY KEY,
+            showtime_id  INTEGER NOT NULL,
+            seat_no      TEXT NOT NULL,
+            user_name    TEXT DEFAULT 'Anonymous',
+            user_id      TEXT,
+            created_at   TIMESTAMP,
+            FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
         )""")
 
         cur.execute("""
@@ -108,10 +260,13 @@ def init_db():
             password TEXT NOT NULL,
             city     TEXT
         )""")
+        conn.commit()
 
         # Seed initial movies if the table is empty
         cur.execute("SELECT COUNT(*) FROM movies")
-        if cur.fetchone()[0] == 0:
+        count_row = cur.fetchone()
+        count_val = count_row[0] if isinstance(count_row, (tuple, list)) else count_row.get("count", count_row.get("COUNT(*)", count_row.get("count(*)", 0)))
+        if count_val == 0:
             seed_movies = [
                 ("MOV001", "Avatar", "Action Adventure Fantasy", "English", 180, 112, "IMAX 1",
                  "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg"),
@@ -127,45 +282,197 @@ def init_db():
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
                 seed_movies
             )
+            conn.commit()
 
+        # Seed showtimes for all movies
+        cur.execute("SELECT id FROM movies")
+        movie_ids = [r[0] if isinstance(r, (tuple, list)) else r["id"] for r in cur.fetchall()]
+        for m_id in movie_ids:
+            seed_default_showtimes_for_movie(cur, m_id, True)
         conn.commit()
+
+        # If we had old bookings, re-insert them mapped to the first showtime ID of their movie
+        if 'old_booked' in locals() and old_booked:
+            for ob in old_booked:
+                cur.execute("SELECT id FROM showtimes WHERE movie_id = %s ORDER BY id LIMIT 1", (ob["movie_id"],))
+                st_row = cur.fetchone()
+                st_id = st_row[0] if isinstance(st_row, (tuple, list)) else (st_row["id"] if st_row else None)
+                if st_id:
+                    cur.execute(
+                        "INSERT INTO booked_seats (showtime_id, seat_no, user_name, user_id, created_at) "
+                        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        (st_id, ob["seat_no"], ob["user_name"], ob["user_id"], ob["created_at"])
+                    )
+            conn.commit()
+
+        if 'old_past' in locals() and old_past:
+            for op in old_past:
+                cur.execute("SELECT id FROM showtimes WHERE movie_id = %s ORDER BY id LIMIT 1", (op["movie_id"],))
+                st_row = cur.fetchone()
+                st_id = st_row[0] if isinstance(st_row, (tuple, list)) else (st_row["id"] if st_row else None)
+                if st_id:
+                    cur.execute(
+                        "INSERT INTO past_bookings (showtime_id, seat_no, user_name, user_id, created_at) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (st_id, op["seat_no"], op["user_name"], op["user_id"], op["created_at"])
+                    )
+            conn.commit()
+
         conn.close()
-        print("PostgreSQL tables ready")
+        print("PostgreSQL tables ready & migrated if needed")
 
     else:
-        # SQLite: run existing migrations on the local file
         try:
             conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
 
-            # booked_seats migrations
-            cursor.execute("PRAGMA table_info(booked_seats)")
-            columns = [col[1] for col in cursor.fetchall()]
-            if "user_name" not in columns:
-                cursor.execute("ALTER TABLE booked_seats ADD COLUMN user_name TEXT DEFAULT 'Anonymous'")
-                conn.commit()
-            if "user_id" not in columns:
-                cursor.execute("ALTER TABLE booked_seats ADD COLUMN user_id TEXT")
-                conn.commit()
-
-            # movies: add image_url column if missing
-            cursor.execute("PRAGMA table_info(movies)")
-            movie_cols = [col[1] for col in cursor.fetchall()]
-            if "image_url" not in movie_cols:
-                cursor.execute("ALTER TABLE movies ADD COLUMN image_url TEXT")
-                conn.commit()
-
-            # Ensure users table exists
+            # Ensure movies table exists first
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                username TEXT UNIQUE,
-                password TEXT,
-                city TEXT
+            CREATE TABLE IF NOT EXISTS movies (
+                id            TEXT PRIMARY KEY,
+                name          TEXT NOT NULL,
+                genre         TEXT,
+                language      TEXT NOT NULL,
+                price         INTEGER NOT NULL,
+                seats_available INTEGER NOT NULL,
+                screen_no     TEXT NOT NULL,
+                image_url     TEXT
             )""")
             conn.commit()
+
+            # Check if booked_seats needs migration
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='booked_seats'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(booked_seats)")
+                cols = [col[1] for col in cursor.fetchall()]
+                if "movie_id" in cols:
+                    print("Migrating SQLite tables to showtimes...")
+                    # 1. Fetch current bookings
+                    cursor.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM booked_seats")
+                    old_booked = [dict(row) if isinstance(row, dict) else {
+                        "movie_id": row[0], "seat_no": row[1], "user_name": row[2], "user_id": row[3], "created_at": row[4]
+                    } for row in cursor.fetchall()]
+
+                    # 2. Fetch past bookings
+                    old_past = []
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='past_bookings'")
+                    if cursor.fetchone():
+                        cursor.execute("PRAGMA table_info(past_bookings)")
+                        past_cols = [col[1] for col in cursor.fetchall()]
+                        if "movie_id" in past_cols:
+                            cursor.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM past_bookings")
+                            old_past = [dict(row) if isinstance(row, dict) else {
+                                "movie_id": row[0], "seat_no": row[1], "user_name": row[2], "user_id": row[3], "created_at": row[4]
+                            } for row in cursor.fetchall()]
+
+                    # 3. Drop tables
+                    cursor.execute("DROP TABLE IF EXISTS booked_seats")
+                    cursor.execute("DROP TABLE IF EXISTS past_bookings")
+                    cursor.execute("DROP TABLE IF EXISTS showtimes")
+                    conn.commit()
+
+            # Create showtimes table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS showtimes (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                movie_id  TEXT NOT NULL,
+                show_date TEXT NOT NULL,
+                show_time TEXT NOT NULL,
+                FOREIGN KEY(movie_id) REFERENCES movies(id) ON DELETE CASCADE
+            )""")
+
+            # Create booked_seats with showtime_id
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS booked_seats (
+                showtime_id  INTEGER,
+                seat_no      TEXT,
+                user_name    TEXT DEFAULT 'Anonymous',
+                user_id      TEXT,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (showtime_id, seat_no),
+                FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
+            )""")
+
+            # Create past_bookings with showtime_id
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS past_bookings (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                showtime_id  INTEGER NOT NULL,
+                seat_no      TEXT NOT NULL,
+                user_name    TEXT DEFAULT 'Anonymous',
+                user_id      TEXT,
+                created_at   TIMESTAMP,
+                FOREIGN KEY(showtime_id) REFERENCES showtimes(id) ON DELETE CASCADE
+            )""")
+
+            # Create users table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id       TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                city     TEXT
+            )""")
+            conn.commit()
+
+            # Seed initial movies if the table is empty
+            cursor.execute("SELECT COUNT(*) FROM movies")
+            count_val = cursor.fetchone()
+            count_val = count_val[0] if count_val else 0
+            if count_val == 0:
+                seed_movies = [
+                    ("MOV001", "Avatar", "Action Adventure Fantasy", "English", 180, 112, "IMAX 1",
+                     "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg"),
+                    ("MOV002", "Spectre", "Action Adventure Thriller", "English", 150, 90, "Screen B2",
+                     "https://cdn.kinocheck.com/i/i68lg3r6qd.jpg"),
+                    ("MOV003", "Fight Club", "Action", "English", 100, 60, "Screen A1",
+                     "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg"),
+                    ("MOV004", "The Dark Knight Rises", "Action Crime Drama", "English", 200, 125, "Dolby Atmos",
+                     "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg"),
+                ]
+                cursor.executemany(
+                    "INSERT OR IGNORE INTO movies (id, name, genre, language, price, seats_available, screen_no, image_url) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    seed_movies
+                )
+                conn.commit()
+
+            # Seed showtimes for all movies
+            cursor.execute("SELECT id FROM movies")
+            movie_ids = [r[0] for r in cursor.fetchall()]
+            for m_id in movie_ids:
+                seed_default_showtimes_for_movie(cursor, m_id, False)
+            conn.commit()
+
+            # Map old bookings if they exist in locals
+            if 'old_booked' in locals() and old_booked:
+                for ob in old_booked:
+                    cursor.execute("SELECT id FROM showtimes WHERE movie_id = ? ORDER BY id LIMIT 1", (ob["movie_id"],))
+                    st_row = cursor.fetchone()
+                    st_id = st_row[0] if st_row else None
+                    if st_id:
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO booked_seats (showtime_id, seat_no, user_name, user_id, created_at) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (st_id, ob["seat_no"], ob["user_name"], ob["user_id"], ob["created_at"])
+                        )
+                conn.commit()
+
+            if 'old_past' in locals() and old_past:
+                for op in old_past:
+                    cursor.execute("SELECT id FROM showtimes WHERE movie_id = ? ORDER BY id LIMIT 1", (op["movie_id"],))
+                    st_row = cursor.fetchone()
+                    st_id = st_row[0] if st_row else None
+                    if st_id:
+                        cursor.execute(
+                            "INSERT INTO past_bookings (showtime_id, seat_no, user_name, user_id, created_at) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (st_id, op["seat_no"], op["user_name"], op["user_id"], op["created_at"])
+                        )
+                conn.commit()
+
             conn.close()
-            print("SQLite tables ready")
+            print("SQLite tables ready & migrated if needed")
         except Exception as e:
             print(f"SQLite migration error: {e}")
 
@@ -198,7 +505,7 @@ class MovieBase(BaseModel):
     image_url: Optional[str] = Field(None, json_schema_extra={"example": "https://image.tmdb.org/t/p/w500/abc.jpg"})
 
 class MovieCreate(MovieBase):
-    pass
+    show_timings: Optional[str] = Field(None, json_schema_extra={"example": "02:30 PM, 06:30 PM"})
 
 class RecommendationResponse(BaseModel):
     title: str
@@ -218,10 +525,15 @@ class CancelSeatRequest(BaseModel):
     seat_no: str = Field(..., json_schema_extra={"example": "A1"})
 
 class BookingResponse(BaseModel):
+    showtime_id: int
     movie_id: str
+    movie_name: str
+    show_date: str
+    show_time: str
     seat_no: str
     user_name: Optional[str] = Field(None, json_schema_extra={"example": "John Doe"})
     user_id: Optional[str] = Field(None, json_schema_extra={"example": "I001"})
+    is_expired: bool = False
 
 class UserCreate(BaseModel):
     username: str = Field(..., json_schema_extra={"example": "rahul"})
@@ -292,15 +604,15 @@ app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 @app.get("/style.css")
 def read_style():
-    return FileResponse("frontend/style.css")
+    return FileResponse("frontend/style.css", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 @app.get("/app.js")
 def read_app_js():
-    return FileResponse("frontend/app.js")
+    return FileResponse("frontend/app.js", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 @app.get("/")
 def read_root():
-    return FileResponse("frontend/index.html")
+    return FileResponse("frontend/index.html", headers={"Cache-Control": "public, max-age=3600"})
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTES
@@ -356,11 +668,31 @@ def add_movie(movie: MovieCreate, db=Depends(get_db)):
              movie.price, movie.seats_available, movie.screen_no, movie.image_url)
         )
         db.commit()
+
+        # Seed showtimes for the new movie
+        import datetime
+        timings = ["02:30 PM", "06:30 PM"]
+        if movie.show_timings:
+            timings = [t.strip() for t in movie.show_timings.split(",") if t.strip()]
+
+        today = datetime.date.today()
+        ph = "%s" if USE_POSTGRES else "?"
+        for i in range(3):
+            date_str = (today + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+            for time_str in timings:
+                cursor.execute(
+                    f"INSERT INTO showtimes (movie_id, show_date, show_time) VALUES ({ph}, {ph}, {ph})",
+                    (movie.id, date_str, time_str)
+                )
+        db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-    return movie
+    # Return MovieResponse
+    movie_dict = movie.model_dump()
+    movie_dict["recommendations"] = []
+    return movie_dict
 
 # 4. Delete movie
 @app.delete("/movies/{movie_id}")
@@ -371,51 +703,138 @@ def delete_movie(movie_id: str, db=Depends(get_db)):
         raise HTTPException(status_code=404, detail="Movie not found")
 
     try:
+        # Find all showtimes for this movie
+        cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH}", (movie_id,))
+        showtime_ids = [r[0] if isinstance(r, (tuple, list)) else r["id"] for r in cursor.fetchall()]
+
+        if showtime_ids:
+            placeholders = ",".join([PH] * len(showtime_ids))
+            cursor.execute(f"DELETE FROM booked_seats WHERE showtime_id IN ({placeholders})", tuple(showtime_ids))
+            cursor.execute(f"DELETE FROM past_bookings WHERE showtime_id IN ({placeholders})", tuple(showtime_ids))
+
+        cursor.execute(f"DELETE FROM showtimes WHERE movie_id = {PH}", (movie_id,))
         cursor.execute(f"DELETE FROM movies WHERE id = {PH}", (movie_id,))
-        cursor.execute(f"DELETE FROM booked_seats WHERE movie_id = {PH}", (movie_id,))
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-    return {"message": f"Movie {movie_id} and its associated bookings removed successfully"}
+    return {"message": f"Movie {movie_id} and its associated bookings/showtimes removed successfully"}
 
-# 5. View seats for a movie
-@app.get("/movies/{movie_id}/seats")
-def get_movie_seats(movie_id: str, db=Depends(get_db)):
+# 4.1 Get showtimes for movie
+@app.get("/movies/{movie_id}/showtimes")
+def get_movie_showtimes(movie_id: str, db=Depends(get_db)):
     cursor = get_cursor(db)
-    cursor.execute(f"SELECT seats_available FROM movies WHERE id = {PH}", (movie_id,))
-    row = cursor.fetchone()
-    if not row:
+    cursor.execute(f"SELECT id FROM movies WHERE id = {PH}", (movie_id,))
+    if not cursor.fetchone():
         raise HTTPException(status_code=404, detail="Movie not found")
 
-    seat_count = row["seats_available"] if USE_POSTGRES else row[0]
+    cursor.execute(
+        f"SELECT id, movie_id, show_date, show_time FROM showtimes WHERE movie_id = {PH} ORDER BY show_date ASC, show_time ASC",
+        (movie_id,)
+    )
+    rows = cursor.fetchall()
+    
+    import datetime
+    now = datetime.datetime.now()
+    active_showtimes = []
+    
+    for row in rows:
+        r = dict(row) if not isinstance(row, (tuple, list)) else {
+            "id": row[0],
+            "movie_id": row[1],
+            "show_date": row[2],
+            "show_time": row[3]
+        }
+        
+        try:
+            # Parse showtime to datetime object
+            show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
+            # Only include showtimes that are in the future or currently starting
+            if show_dt >= now:
+                active_showtimes.append(r)
+        except Exception as e:
+            # Keep showtimes with format errors to prevent silently breaking the UI
+            print(f"Error parsing showtime: {e}")
+            active_showtimes.append(r)
+            
+    return active_showtimes
+
+# 5. View seats for a showtime
+@app.get("/showtimes/{showtime_id}/seats")
+def get_showtime_seats(showtime_id: int, db=Depends(get_db)):
+    cleanup_expired_bookings(db)
+    cursor = get_cursor(db)
+
+    # Fetch showtime and movie information
+    cursor.execute(
+        f"SELECT s.id as showtime_id, s.movie_id, s.show_date, s.show_time, m.seats_available "
+        f"FROM showtimes s JOIN movies m ON s.movie_id = m.id WHERE s.id = {PH}",
+        (showtime_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Showtime not found")
+
+    movie_id = row["movie_id"]
+    seat_count = row["seats_available"]
+    show_date = row["show_date"]
+    show_time = row["show_time"]
+
     seat_names = get_seat_names(seat_count)
 
-    cursor.execute(f"SELECT seat_no FROM booked_seats WHERE movie_id = {PH}", (movie_id,))
+    cursor.execute(f"SELECT seat_no FROM booked_seats WHERE showtime_id = {PH}", (showtime_id,))
     booked_rows = cursor.fetchall()
-    booked_seats = {r["seat_no"] if USE_POSTGRES else r[0] for r in booked_rows}
+    booked_seats = {r["seat_no"] for r in booked_rows}
 
     seat_map = {seat: (seat in booked_seats) for seat in seat_names}
 
     return {
+        "showtime_id": showtime_id,
         "movie_id": movie_id,
+        "show_date": show_date,
+        "show_time": show_time,
         "total_seats": seat_count,
         "booked_count": len(booked_seats),
         "available_count": seat_count - len(booked_seats),
         "seats": seat_map
     }
 
-# 6. Book seats
-@app.post("/movies/{movie_id}/book")
-def book_seats(movie_id: str, request: BookSeatsRequest, db=Depends(get_db)):
+# 5.1 View seats for a movie (Legacy)
+@app.get("/movies/{movie_id}/seats")
+def get_movie_seats(movie_id: str, db=Depends(get_db)):
+    cleanup_expired_bookings(db)
     cursor = get_cursor(db)
-    cursor.execute(f"SELECT seats_available FROM movies WHERE id = {PH}", (movie_id,))
-    row = cursor.fetchone()
-    if not row:
+
+    cursor.execute(f"SELECT id FROM movies WHERE id = {PH}", (movie_id,))
+    if not cursor.fetchone():
         raise HTTPException(status_code=404, detail="Movie not found")
 
-    seat_count = row["seats_available"] if USE_POSTGRES else row[0]
+    cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+    st_row = cursor.fetchone()
+    if not st_row:
+        raise HTTPException(status_code=404, detail="No showtimes found for this movie")
+
+    st_id = st_row["id"] if "id" in st_row else st_row[0]
+    return get_showtime_seats(st_id, db)
+
+# 6. Book seats for a showtime
+@app.post("/showtimes/{showtime_id}/book")
+def book_seats(showtime_id: int, request: BookSeatsRequest, db=Depends(get_db)):
+    cleanup_expired_bookings(db)
+    cursor = get_cursor(db)
+
+    cursor.execute(
+        f"SELECT s.movie_id, m.seats_available "
+        f"FROM showtimes s JOIN movies m ON s.movie_id = m.id WHERE s.id = {PH}",
+        (showtime_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Showtime not found")
+
+    movie_id = row["movie_id"]
+    seat_count = row["seats_available"]
     valid_seats = set(get_seat_names(seat_count))
 
     requested_seats = []
@@ -434,8 +853,8 @@ def book_seats(movie_id: str, request: BookSeatsRequest, db=Depends(get_db)):
         if seat not in valid_seats:
             raise HTTPException(status_code=400, detail=f"Seat {seat} is not valid for this movie")
 
-    cursor.execute(f"SELECT seat_no FROM booked_seats WHERE movie_id = {PH}", (movie_id,))
-    already_booked = {r["seat_no"] if USE_POSTGRES else r[0] for r in cursor.fetchall()}
+    cursor.execute(f"SELECT seat_no FROM booked_seats WHERE showtime_id = {PH}", (showtime_id,))
+    already_booked = {r["seat_no"] for r in cursor.fetchall()}
 
     conflicts = [s for s in requested_seats if s in already_booked]
     if conflicts:
@@ -443,63 +862,123 @@ def book_seats(movie_id: str, request: BookSeatsRequest, db=Depends(get_db)):
 
     try:
         for seat in requested_seats:
-            cursor.execute(
-                f"INSERT INTO booked_seats(movie_id, seat_no, user_name, user_id) "
-                f"VALUES ({PH}, {PH}, {PH}, {PH})",
-                (movie_id, seat, request.user_name, request.user_id)
-            )
+            if USE_POSTGRES:
+                cursor.execute(
+                    "INSERT INTO booked_seats(showtime_id, seat_no, user_name, user_id, created_at) "
+                    "VALUES (%s, %s, %s, %s, NOW())",
+                    (showtime_id, seat, request.user_name, request.user_id)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO booked_seats(showtime_id, seat_no, user_name, user_id, created_at) "
+                    "VALUES (?, ?, ?, ?, datetime('now'))",
+                    (showtime_id, seat, request.user_name, request.user_id)
+                )
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error during booking: {e}")
 
-    return {"message": "Booking successful", "movie_id": movie_id, "booked_seats": requested_seats}
+    return {"message": "Booking successful", "showtime_id": showtime_id, "movie_id": movie_id, "booked_seats": requested_seats}
 
-# 7. Cancel booking
-@app.post("/movies/{movie_id}/cancel")
-def cancel_seats(movie_id: str, request: CancelSeatRequest, db=Depends(get_db)):
+# 6.1 Book seats (Legacy)
+@app.post("/movies/{movie_id}/book")
+def legacy_book_seats(movie_id: str, request: BookSeatsRequest, db=Depends(get_db)):
+    cursor = get_cursor(db)
+    cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+    st_row = cursor.fetchone()
+    if not st_row:
+        raise HTTPException(status_code=404, detail="No showtimes found for this movie")
+    st_id = st_row["id"] if "id" in st_row else st_row[0]
+    return book_seats(st_id, request, db)
+
+# 7. Cancel booking for a showtime
+@app.post("/showtimes/{showtime_id}/cancel")
+def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db)):
     cursor = get_cursor(db)
     seat_no = request.seat_no.upper().strip()
 
     cursor.execute(
-        f"SELECT * FROM booked_seats WHERE movie_id = {PH} AND seat_no = {PH}",
-        (movie_id, seat_no)
+        f"SELECT * FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}",
+        (showtime_id, seat_no)
     )
     if not cursor.fetchone():
         raise HTTPException(
             status_code=404,
-            detail=f"No booking found for Movie {movie_id} and Seat {seat_no}"
+            detail=f"No booking found for Showtime {showtime_id} and Seat {seat_no}"
         )
 
     try:
         cursor.execute(
-            f"DELETE FROM booked_seats WHERE movie_id = {PH} AND seat_no = {PH}",
-            (movie_id, seat_no)
+            f"DELETE FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}",
+            (showtime_id, seat_no)
         )
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error during cancellation: {e}")
 
-    return {"message": "Booking cancelled successfully", "movie_id": movie_id, "seat_no": seat_no}
+    return {"message": "Booking cancelled successfully", "showtime_id": showtime_id, "seat_no": seat_no}
+
+# 7.1 Cancel booking (Legacy)
+@app.post("/movies/{movie_id}/cancel")
+def legacy_cancel_seats(movie_id: str, request: CancelSeatRequest, db=Depends(get_db)):
+    cursor = get_cursor(db)
+    cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
+    st_row = cursor.fetchone()
+    if not st_row:
+        raise HTTPException(status_code=404, detail="No showtimes found for this movie")
+    st_id = st_row["id"] if "id" in st_row else st_row[0]
+    return cancel_seats(st_id, request, db)
 
 # 8. View bookings
 @app.get("/bookings", response_model=List[BookingResponse])
 def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None, db=Depends(get_db)):
+    cleanup_expired_bookings(db)
     cursor = get_cursor(db)
+    
+    # 1. Fetch Active Bookings
+    query_active = (
+        "SELECT b.showtime_id, s.movie_id, m.name as movie_name, s.show_date, s.show_time, "
+        "       b.seat_no, b.user_name, b.user_id "
+        "FROM booked_seats b "
+        "JOIN showtimes s ON b.showtime_id = s.id "
+        "JOIN movies m ON s.movie_id = m.id"
+    )
+    
+    params = []
     if user_id:
-        cursor.execute(
-            f"SELECT movie_id, seat_no, user_name, user_id FROM booked_seats WHERE user_id = {PH}",
-            (user_id,)
-        )
+        query_active += f" WHERE b.user_id = {PH}"
+        params.append(user_id)
     elif user_name:
-        cursor.execute(
-            f"SELECT movie_id, seat_no, user_name, user_id FROM booked_seats WHERE user_name = {PH}",
-            (user_name,)
-        )
-    else:
-        cursor.execute("SELECT movie_id, seat_no, user_name, user_id FROM booked_seats")
-    return [dict(row) for row in cursor.fetchall()]
+        query_active += f" WHERE b.user_name = {PH}"
+        params.append(user_name)
+        
+    cursor.execute(query_active, tuple(params))
+    active_rows = [dict(row) for row in cursor.fetchall()]
+    for r in active_rows:
+        r["is_expired"] = False
+
+    # 2. Fetch Past/Expired Bookings
+    query_past = (
+        "SELECT b.showtime_id, s.movie_id, m.name as movie_name, s.show_date, s.show_time, "
+        "       b.seat_no, b.user_name, b.user_id "
+        "FROM past_bookings b "
+        "JOIN showtimes s ON b.showtime_id = s.id "
+        "JOIN movies m ON s.movie_id = m.id"
+    )
+    
+    if user_id:
+        query_past += f" WHERE b.user_id = {PH}"
+    elif user_name:
+        query_past += f" WHERE b.user_name = {PH}"
+        
+    cursor.execute(query_past, tuple(params))
+    past_rows = [dict(row) for row in cursor.fetchall()]
+    for r in past_rows:
+        r["is_expired"] = True
+
+    return active_rows + past_rows
 
 # 9. Register user
 @app.post("/users/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -514,7 +993,7 @@ def register_user(user: UserCreate, db=Depends(get_db)):
         ids = cursor.fetchall()
         max_num = 0
         for row in ids:
-            uid = row["id"] if USE_POSTGRES else row[0]
+            uid = row["id"]
             if uid and uid.startswith("I"):
                 try:
                     num = int(uid[1:])
@@ -544,13 +1023,13 @@ def login_user(user: UserLogin, db=Depends(get_db)):
         (user.username,)
     )
     db_user = cursor.fetchone()
-    stored_password = db_user["password"] if (USE_POSTGRES and db_user) else (db_user[2] if db_user else None)
+    stored_password = db_user["password"] if db_user else None
 
     if not db_user or stored_password != user.password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    uid = db_user["id"] if USE_POSTGRES else db_user[0]
-    uname = db_user["username"] if USE_POSTGRES else db_user[1]
+    uid = db_user["id"]
+    uname = db_user["username"]
     return {"message": "Login successful", "id": uid, "username": uname}
 
 # 11. Login admin
