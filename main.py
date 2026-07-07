@@ -210,16 +210,21 @@ def init_db():
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='booked_seats' AND column_name='movie_id'")
         if cur.fetchone():
             print("Migrating Postgres tables to showtimes...")
-            # 1. Fetch current bookings
-            cur.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM booked_seats")
+            # 1. Fetch current bookings (legacy booked_seats didn't have created_at)
+            cur.execute("SELECT movie_id, seat_no, user_name, user_id FROM booked_seats")
             old_booked = cur.fetchall()
 
-            # 2. Fetch past bookings
+            # 2. Fetch past bookings (if it exists)
             cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='past_bookings' AND column_name='movie_id'")
             old_past = []
             if cur.fetchone():
-                cur.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM past_bookings")
-                old_past = cur.fetchall()
+                try:
+                    cur.execute("SELECT movie_id, seat_no, user_name, user_id, created_at FROM past_bookings")
+                    old_past = cur.fetchall()
+                except Exception:
+                    conn.rollback()
+                    cur.execute("SELECT movie_id, seat_no, user_name, user_id FROM past_bookings")
+                    old_past = cur.fetchall()
 
             # 3. Drop tables
             cur.execute("DROP TABLE IF EXISTS booked_seats")
@@ -306,7 +311,7 @@ def init_db():
                     cur.execute(
                         "INSERT INTO booked_seats (showtime_id, seat_no, user_name, user_id, created_at) "
                         "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        (st_id, ob["seat_no"], ob["user_name"], ob["user_id"], ob["created_at"])
+                        (st_id, ob["seat_no"], ob["user_name"], ob["user_id"], ob.get("created_at", None))
                     )
             conn.commit()
 
@@ -319,7 +324,7 @@ def init_db():
                     cur.execute(
                         "INSERT INTO past_bookings (showtime_id, seat_no, user_name, user_id, created_at) "
                         "VALUES (%s, %s, %s, %s, %s)",
-                        (st_id, op["seat_no"], op["user_name"], op["user_id"], op["created_at"])
+                        (st_id, op["seat_no"], op["user_name"], op["user_id"], op.get("created_at", None))
                     )
             conn.commit()
 
