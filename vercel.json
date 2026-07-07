@@ -1,34 +1,24 @@
 {
-  "builds": [
+  "rewrites": [
     {
-      "src": "main.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/style.css",
-      "dest": "/frontend/style.css",
-      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
+      "source": "/style.css",
+      "destination": "/frontend/style.css"
     },
     {
-      "src": "/app.js",
-      "dest": "/frontend/app.js",
-      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
+      "source": "/app.js",
+      "destination": "/frontend/app.js"
     },
     {
-      "src": "/frontend/(.*)",
-      "dest": "/frontend/$1",
-      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
+      "source": "/(movies|bookings|users|admins|showtimes)(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/(movies|bookings|users|admins|showtimes)(.*)",
-      "dest": "main.py"
+      "source": "/",
+      "destination": "/frontend/index.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/frontend/index.html",
-      "headers": { "Cache-Control": "public, max-age=3600" }
+      "source": "/(.*)",
+      "destination": "/frontend/$1"
     }
   ]
 }
