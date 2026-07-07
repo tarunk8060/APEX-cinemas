@@ -643,8 +643,8 @@ def get_movie(movie_id: str, db=Depends(get_db)):
 
     movie_dict = dict(row)
 
-    from recommender.recommendation_engine import get_recommendations
     try:
+        from recommender.recommendation_engine import get_recommendations
         movie_dict["recommendations"] = get_recommendations(movie_dict["name"], top_n=3)
     except Exception as e:
         movie_dict["recommendations"] = []
