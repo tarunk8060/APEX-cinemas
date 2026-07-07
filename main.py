@@ -11,17 +11,22 @@ USE_POSTGRES = bool(DATABASE_URL)
 
 pg_pool = None
 if USE_POSTGRES:
-    import psycopg2
-    import psycopg2.extras
-    from psycopg2.pool import ThreadedConnectionPool
-    PH = "%s"          # PostgreSQL placeholder
-    print("Using PostgreSQL (Neon / cloud DB)")
     try:
-        pg_pool = ThreadedConnectionPool(1, 4, DATABASE_URL)
-        print("PostgreSQL connection pool initialized successfully.")
+        import psycopg2
+        import psycopg2.extras
+        from psycopg2.pool import ThreadedConnectionPool
+        PH = "%s"          # PostgreSQL placeholder
+        print("Using PostgreSQL (Neon / cloud DB)")
+        try:
+            pg_pool = ThreadedConnectionPool(1, 4, DATABASE_URL)
+            print("PostgreSQL connection pool initialized successfully.")
+        except Exception as e:
+            print(f"Failed to initialize PostgreSQL pool: {e}")
     except Exception as e:
-        print(f"Failed to initialize PostgreSQL pool: {e}")
-else:
+        print(f"CRITICAL: Failed to import or setup psycopg2 on this platform: {e}. Falling back to SQLite.")
+        USE_POSTGRES = False
+
+if not USE_POSTGRES:
     import sqlite3
     DB_PATH = os.environ.get(
         "DB_PATH",
