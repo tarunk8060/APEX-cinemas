@@ -1443,3 +1443,71 @@ body {
     font-weight: 500;
 }
 
+/* -------------------------------------------------------------
+   RESPONSIVE DESIGN (MOBILE & TABLET)
+   ------------------------------------------------------------- */
+@media screen and (max-width: 900px) {
+    .booking-split-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .app-layout {
+        flex-direction: column;
+    }
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        padding: 15px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .sidebar-brand {
+        padding: 0;
+    }
+    .sidebar-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+        margin-top: 15px;
+        width: 100%;
+        gap: 4px;
+    }
+    .nav-item {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1;
+        justify-content: center;
+    }
+    .sidebar-footer {
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 10px;
+        margin-top: 10px;
+    }
+    .main-content {
+        margin-left: 0;
+        padding: 20px;
+        min-height: auto;
+    }
+    .movies-grid {
+        grid-template-columns: 1fr;
+    }
+    .auth-card {
+        width: 90%;
+        padding: 24px;
+    }
+    .view-header h2 {
+        font-size: 24px;
+    }
+    .carousel-image {
+        height: 250px;
+    }
+}
