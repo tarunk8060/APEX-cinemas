@@ -628,6 +628,63 @@ def list_movies(db=Depends(get_db)):
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
 
+@app.get("/movies/debug-db")
+def debug_db():
+    import os
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return {"status": "error", "message": "DATABASE_URL environment variable is not set."}
+    
+    # Mask password for safety
+    masked_url = db_url
+    try:
+        if "@" in db_url:
+            parts = db_url.split("@")
+            prefix = parts[0]
+            if ":" in prefix:
+                subparts = prefix.split(":")
+                if len(subparts) > 2:
+                    prefix_masked = subparts[0] + ":" + subparts[1] + ":***"
+                else:
+                    prefix_masked = prefix
+            else:
+                prefix_masked = prefix
+            masked_url = prefix_masked + "@" + parts[1]
+    except Exception:
+        masked_url = "Failed to mask"
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute("SELECT version();")
+        version = cur.fetchone()[0]
+        
+        # Check tables
+        tables = {}
+        for t in ["movies", "showtimes", "booked_seats", "past_bookings", "users"]:
+            try:
+                cur.execute(f"SELECT COUNT(*) FROM {t}")
+                tables[t] = cur.fetchone()[0]
+            except Exception as te:
+                tables[t] = f"Error: {te}"
+                conn.rollback()
+
+        conn.close()
+        return {
+            "status": "success",
+            "message": "Successfully connected to PostgreSQL database.",
+            "version": version,
+            "tables": tables,
+            "masked_url": masked_url
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Connection failed: {e}",
+            "masked_url": masked_url
+        }
+
 # 2. Get movie by ID
 @app.get("/movies/{movie_id}", response_model=MovieResponse)
 def get_movie(movie_id: str, db=Depends(get_db)):
