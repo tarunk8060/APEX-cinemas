@@ -640,54 +640,49 @@ def debug_db():
     if not db_url:
         return {"status": "error", "message": "DATABASE_URL environment variable is not set."}
     
-    # Mask password for safety
-    masked_url = db_url
-    try:
-        if "@" in db_url:
-            parts = db_url.split("@")
-            prefix = parts[0]
-            if ":" in prefix:
-                subparts = prefix.split(":")
-                if len(subparts) > 2:
-                    prefix_masked = subparts[0] + ":" + subparts[1] + ":***"
-                else:
-                    prefix_masked = prefix
-            else:
-                prefix_masked = prefix
-            masked_url = prefix_masked + "@" + parts[1]
-    except Exception:
-        masked_url = "Failed to mask"
+    masked_url = db_url.split("@")[1] if "@" in db_url else "masked"
 
     try:
         import psycopg2
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
-        cur.execute("SELECT version();")
-        version = cur.fetchone()[0]
         
-        # Check tables
-        tables = {}
-        for t in ["movies", "showtimes", "booked_seats", "past_bookings", "users"]:
-            try:
-                cur.execute(f"SELECT COUNT(*) FROM {t}")
-                tables[t] = cur.fetchone()[0]
-            except Exception as te:
-                tables[t] = f"Error: {te}"
-                conn.rollback()
+        # 1. Fetch booked_seats schema
+        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'booked_seats'")
+        booked_seats_schema = cur.fetchall()
+
+        # 2. Try to manually run the exact table creation to catch the error
+        creation_error = None
+        try:
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS showtimes (
+                id        SERIAL PRIMARY KEY,
+                movie_id  TEXT NOT NULL,
+                show_date TEXT NOT NULL,
+                show_time TEXT NOT NULL,
+                FOREIGN KEY(movie_id) REFERENCES movies(id) ON DELETE CASCADE
+            )""")
+            conn.commit()
+            creation_error = "No error. showtimes created successfully."
+        except Exception as ce:
+            conn.rollback()
+            creation_error = str(ce)
+
+        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'showtimes'")
+        showtimes_schema = cur.fetchall()
 
         conn.close()
         return {
             "status": "success",
-            "message": "Successfully connected to PostgreSQL database.",
-            "version": version,
-            "tables": tables,
+            "booked_seats_schema": booked_seats_schema,
+            "showtimes_schema": showtimes_schema,
+            "creation_error": creation_error,
             "masked_url": masked_url
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Connection failed: {e}",
-            "masked_url": masked_url
+            "message": f"Connection failed: {e}"
         }
 
 # 2. Get movie by ID
