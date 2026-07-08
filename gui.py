@@ -648,12 +648,34 @@ class MovieBookingApp(ctk.CTk):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(f"SELECT id FROM showtimes WHERE movie_id = {PH} ORDER BY id LIMIT 1", (movie_id,))
-            st_row = cursor.fetchone()
-            if not st_row:
+            
+            # Find the correct showtime for this booking
+            cursor.execute(
+                f"SELECT bs.showtime_id, s.show_date, s.show_time "
+                f"FROM booked_seats bs "
+                f"JOIN showtimes s ON bs.showtime_id = s.id "
+                f"WHERE s.movie_id = {PH} AND bs.seat_no = {PH}",
+                (movie_id, seat_no)
+            )
+            row = cursor.fetchone()
+            if not row:
                 conn.close()
                 return False
-            st_id = st_row[0]
+                
+            st_id, show_date_str, show_time_str = row[0], row[1], row[2]
+            
+            # Check if showtime has already passed
+            import datetime
+            now = datetime.datetime.now()
+            try:
+                show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
+                if show_dt < now:
+                    conn.close()
+                    messagebox.showerror("Cancellation Error", "Cannot cancel a booking for a showtime that has already passed.")
+                    return False
+            except Exception as parse_err:
+                print(f"Error parsing showtime in cancel_seat_in_db: {parse_err}")
+                
             cursor.execute(f"DELETE FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}", (st_id, seat_no))
             conn.commit()
             conn.close()
@@ -671,7 +693,7 @@ class MovieBookingApp(ctk.CTk):
             # If an admin is logged in, fetch all bookings.
             if self.is_user_logged_in:
                 query = f"""
-                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
+                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no, s.show_date, s.show_time 
                 FROM booked_seats bs
                 JOIN showtimes s ON bs.showtime_id = s.id
                 JOIN movies m ON s.movie_id = m.id
@@ -680,7 +702,7 @@ class MovieBookingApp(ctk.CTk):
                 cursor.execute(query, (self.current_user_id,))
             else:
                 query = f"""
-                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no 
+                SELECT s.movie_id, m.name, m.language, m.price, m.screen_no, bs.seat_no, s.show_date, s.show_time 
                 FROM booked_seats bs
                 JOIN showtimes s ON bs.showtime_id = s.id
                 JOIN movies m ON s.movie_id = m.id
@@ -690,8 +712,20 @@ class MovieBookingApp(ctk.CTk):
             rows = cursor.fetchall()
             conn.close()
 
+            import datetime
+            now = datetime.datetime.now()
+
             bookings = []
             for row in rows:
+                show_date_str = row[6]
+                show_time_str = row[7]
+                try:
+                    show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
+                    if show_dt < now:
+                        continue # Skip past bookings
+                except Exception as parse_err:
+                    print(f"Error parsing showtime in get_all_bookings_from_db: {parse_err}")
+
                 bookings.append({
                     "movie_id": row[0],
                     "movie_name": row[1],

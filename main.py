@@ -961,14 +961,38 @@ def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db
     seat_no = request.seat_no.upper().strip()
 
     cursor.execute(
-        f"SELECT * FROM booked_seats WHERE showtime_id = {PH} AND seat_no = {PH}",
+        f"SELECT b.showtime_id, s.show_date, s.show_time "
+        f"FROM booked_seats b "
+        f"JOIN showtimes s ON b.showtime_id = s.id "
+        f"WHERE b.showtime_id = {PH} AND b.seat_no = {PH}",
         (showtime_id, seat_no)
     )
-    if not cursor.fetchone():
+    row = cursor.fetchone()
+    if not row:
         raise HTTPException(
             status_code=404,
             detail=f"No booking found for Showtime {showtime_id} and Seat {seat_no}"
         )
+
+    r = dict(row) if not isinstance(row, (tuple, list)) else {
+        "showtime_id": row[0],
+        "show_date": row[1],
+        "show_time": row[2]
+    }
+
+    import datetime
+    now = datetime.datetime.now()
+    try:
+        show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
+        if show_dt < now:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot cancel a booking for a past showtime"
+            )
+    except HTTPException:
+        raise
+    except Exception as parse_err:
+        print(f"Error parsing showtime in cancel_seats: {parse_err}")
 
     try:
         cursor.execute(
@@ -1018,8 +1042,27 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
         
     cursor.execute(query_active, tuple(params))
     active_rows = [dict(row) for row in cursor.fetchall()]
+    
+    import datetime
+    now = datetime.datetime.now()
+    
+    final_active = []
+    final_past = []
     for r in active_rows:
-        r["is_expired"] = False
+        show_date_str = r["show_date"]
+        show_time_str = r["show_time"]
+        try:
+            show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
+            if show_dt < now:
+                r["is_expired"] = True
+                final_past.append(r)
+            else:
+                r["is_expired"] = False
+                final_active.append(r)
+        except Exception as parse_err:
+            print(f"Error parsing showtime in get_bookings: {parse_err}")
+            r["is_expired"] = False
+            final_active.append(r)
 
     # 2. Fetch Past/Expired Bookings
     query_past = (
@@ -1040,7 +1083,7 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
     for r in past_rows:
         r["is_expired"] = True
 
-    return active_rows + past_rows
+    return final_active + final_past + past_rows
 
 # 9. Register user
 @app.post("/users/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
