@@ -62,6 +62,13 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # ─────────────────────────────────────────────────────────────────
 # DB HELPERS
 # ─────────────────────────────────────────────────────────────────
+def get_current_local_time():
+    import datetime
+    # Define IST timezone (UTC+5:30)
+    ist_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    # Get current time in UTC and convert to IST
+    return datetime.datetime.now(datetime.timezone.utc).astimezone(ist_tz).replace(tzinfo=None)
+
 def lowercase_dict_factory(cursor, row):
     return {col[0].lower(): row[idx] for idx, col in enumerate(cursor.description)}
 
@@ -102,13 +109,17 @@ def get_cursor(conn):
 def seed_default_showtimes_for_movie(cursor, movie_id, use_postgres):
     import datetime
     ph = "%s" if use_postgres else "?"
-    cursor.execute(f"SELECT COUNT(*) FROM showtimes WHERE movie_id = {ph}", (movie_id,))
+    cursor.execute(f"SELECT COUNT(*) AS cnt FROM showtimes WHERE movie_id = {ph}", (movie_id,))
     count = cursor.fetchone()
-    cnt = count[0] if isinstance(count, (list, tuple)) else count.get("count", count.get("COUNT(*)", 0))
+    if isinstance(count, (list, tuple)):
+        cnt = count[0]
+    else:
+        cnt = count.get("cnt", count.get("count", count.get("count(*)", 0)))
     if cnt > 0:
         return
 
-    today = datetime.date.today()
+    now = get_current_local_time()
+    today = now.date()
     timings = ["02:30 PM", "06:30 PM"]
     for i in range(3):
         date_str = (today + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
@@ -133,7 +144,7 @@ def cleanup_expired_bookings(db):
         cursor.execute(query)
         rows = cursor.fetchall()
         
-        now = datetime.datetime.now()
+        now = get_current_local_time()
         expired_rows = []
         
         for row in rows:
@@ -737,7 +748,8 @@ def add_movie(movie: MovieCreate, db=Depends(get_db)):
         if movie.show_timings:
             timings = [t.strip() for t in movie.show_timings.split(",") if t.strip()]
 
-        today = datetime.date.today()
+        now = get_current_local_time()
+        today = now.date()
         ph = "%s" if USE_POSTGRES else "?"
         for i in range(3):
             date_str = (today + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
@@ -791,14 +803,48 @@ def get_movie_showtimes(movie_id: str, db=Depends(get_db)):
     if not cursor.fetchone():
         raise HTTPException(status_code=404, detail="Movie not found")
 
+    import datetime
+    now_local = get_current_local_time()
+    today_local = now_local.date()
+
+    # Fetch existing show times to determine movie timings
+    cursor.execute(f"SELECT DISTINCT show_time FROM showtimes WHERE movie_id = {PH}", (movie_id,))
+    timings_rows = cursor.fetchall()
+    if timings_rows:
+        if isinstance(timings_rows[0], (list, tuple)):
+            timings = [r[0] for r in timings_rows]
+        else:
+            timings = [r.get("show_time", r.get("SHOW_TIME")) for r in timings_rows]
+    else:
+        timings = ["02:30 PM", "06:30 PM"]
+
+    # Ensure showtimes exist for today, today+1, today+2
+    ph = "%s" if USE_POSTGRES else "?"
+    for i in range(3):
+        date_str = (today_local + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+        cursor.execute(
+            f"SELECT COUNT(*) AS cnt FROM showtimes WHERE movie_id = {ph} AND show_date = {ph}",
+            (movie_id, date_str)
+        )
+        count = cursor.fetchone()
+        if isinstance(count, (list, tuple)):
+            cnt = count[0]
+        else:
+            cnt = count.get("cnt", count.get("count", count.get("count(*)", 0)))
+        if cnt == 0:
+            for time_str in timings:
+                cursor.execute(
+                    f"INSERT INTO showtimes (movie_id, show_date, show_time) VALUES ({ph}, {ph}, {ph})",
+                    (movie_id, date_str, time_str)
+                )
+    db.commit()
+
     cursor.execute(
         f"SELECT id, movie_id, show_date, show_time FROM showtimes WHERE movie_id = {PH} ORDER BY show_date ASC, show_time ASC",
         (movie_id,)
     )
     rows = cursor.fetchall()
     
-    import datetime
-    now = datetime.datetime.now()
     active_showtimes = []
     
     for row in rows:
@@ -813,7 +859,7 @@ def get_movie_showtimes(movie_id: str, db=Depends(get_db)):
             # Parse showtime to datetime object
             show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
             # Only include showtimes that are in the future or currently starting
-            if show_dt >= now:
+            if show_dt >= now_local:
                 active_showtimes.append(r)
         except Exception as e:
             # Keep showtimes with format errors to prevent silently breaking the UI
@@ -955,15 +1001,17 @@ def legacy_book_seats(movie_id: str, request: BookSeatsRequest, db=Depends(get_d
     return book_seats(st_id, request, db)
 
 # 7. Cancel booking for a showtime
+@app.get("/showtimes/{showtime_id}/cancel")
 @app.post("/showtimes/{showtime_id}/cancel")
 def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db)):
     cursor = get_cursor(db)
     seat_no = request.seat_no.upper().strip()
 
     cursor.execute(
-        f"SELECT b.showtime_id, s.show_date, s.show_time "
+        f"SELECT b.showtime_id, s.show_date, s.show_time, m.price "
         f"FROM booked_seats b "
         f"JOIN showtimes s ON b.showtime_id = s.id "
+        f"JOIN movies m ON s.movie_id = m.id "
         f"WHERE b.showtime_id = {PH} AND b.seat_no = {PH}",
         (showtime_id, seat_no)
     )
@@ -977,17 +1025,18 @@ def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db
     r = dict(row) if not isinstance(row, (tuple, list)) else {
         "showtime_id": row[0],
         "show_date": row[1],
-        "show_time": row[2]
+        "show_time": row[2],
+        "price": row[3]
     }
 
     import datetime
-    now = datetime.datetime.now()
+    now = get_current_local_time()
     try:
         show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
-        if show_dt < now:
+        if show_dt - datetime.timedelta(hours=1) < now:
             raise HTTPException(
                 status_code=400,
-                detail="Cannot cancel a booking for a past showtime"
+                detail="Cannot cancel tickets within 1 hour of the show start time"
             )
     except HTTPException:
         raise
@@ -1004,7 +1053,16 @@ def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error during cancellation: {e}")
 
-    return {"message": "Booking cancelled successfully", "showtime_id": showtime_id, "seat_no": seat_no}
+    price = r.get("price", 0)
+    refund_amount = max(0, price - 40)
+    return {
+        "message": f"Booking cancelled successfully. Refund of ₹{refund_amount} processed after ₹40 deduction.",
+        "showtime_id": showtime_id,
+        "seat_no": seat_no,
+        "original_price": price,
+        "deduction": 40,
+        "refund_amount": refund_amount
+    }
 
 # 7.1 Cancel booking (Legacy)
 @app.post("/movies/{movie_id}/cancel")
@@ -1044,7 +1102,7 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
     active_rows = [dict(row) for row in cursor.fetchall()]
     
     import datetime
-    now = datetime.datetime.now()
+    now = get_current_local_time()
     
     final_active = []
     final_past = []

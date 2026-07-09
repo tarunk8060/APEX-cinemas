@@ -10,6 +10,13 @@ else:
     import sqlite3
     PH = "?"
 
+def get_current_local_time():
+    import datetime
+    # Define IST timezone (UTC+5:30)
+    ist_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    # Get current time in UTC and convert to IST
+    return datetime.datetime.now(datetime.timezone.utc).astimezone(ist_tz).replace(tzinfo=None)
+
 def get_db_connection():
     if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
@@ -664,14 +671,14 @@ class MovieBookingApp(ctk.CTk):
                 
             st_id, show_date_str, show_time_str = row[0], row[1], row[2]
             
-            # Check if showtime has already passed
+            # Check if showtime is within 1 hour or already passed
             import datetime
-            now = datetime.datetime.now()
+            now = get_current_local_time()
             try:
                 show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
-                if show_dt < now:
+                if show_dt - datetime.timedelta(hours=1) < now:
                     conn.close()
-                    messagebox.showerror("Cancellation Error", "Cannot cancel a booking for a showtime that has already passed.")
+                    messagebox.showerror("Cancellation Error", "Cannot cancel a booking within 1 hour of the show start time.")
                     return False
             except Exception as parse_err:
                 print(f"Error parsing showtime in cancel_seat_in_db: {parse_err}")
@@ -713,7 +720,7 @@ class MovieBookingApp(ctk.CTk):
             conn.close()
 
             import datetime
-            now = datetime.datetime.now()
+            now = get_current_local_time()
 
             bookings = []
             for row in rows:
@@ -1408,9 +1415,10 @@ class MovieBookingApp(ctk.CTk):
         cancel_btn.pack(side="right", padx=25, pady=25)
 
     def cancel_booking_flow(self, booking):
+        refund_amount = max(0, booking['price'] - 40)
         confirm = messagebox.askyesno(
             "Cancel Reservation",
-            f"Are you sure you want to cancel ticket for seat '{booking['seat_no']}' of movie '{booking['movie_name']}'?\n\nThis will issue a refund of ₹{booking['price']}."
+            f"Are you sure you want to cancel ticket for seat '{booking['seat_no']}' of movie '{booking['movie_name']}'?\n\nThis will issue a refund of ₹{refund_amount} after a ₹40 deduction."
         )
         
         if confirm:

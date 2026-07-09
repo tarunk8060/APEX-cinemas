@@ -61,7 +61,7 @@ check("GET / (HTML homepage)", s, d, 200)
 s, d = req("GET", "/movies")
 check("GET /movies returns list", s, d, 200)
 movies = d if isinstance(d, list) else []
-print(f"  → {len(movies)} movies in DB: {[m['name'] for m in movies]}")
+print(f"  -> {len(movies)} movies in DB: {[m['name'] for m in movies]}")
 FIRST_MOVIE_ID = movies[0]["id"] if movies else None
 
 # ── 3. GET /movies/{id}
@@ -69,7 +69,7 @@ print("\n[SECTION] Movie Detail + Recommendations")
 if FIRST_MOVIE_ID:
     s, d = req("GET", f"/movies/{FIRST_MOVIE_ID}")
     ok, mv = check(f"GET /movies/{FIRST_MOVIE_ID}", s, d, 200, "name")
-    print(f"  → Movie: {mv.get('name')} | Recs: {len(mv.get('recommendations', []))} found")
+    print(f"  -> Movie: {mv.get('name')} | Recs: {len(mv.get('recommendations', []))} found")
 
 # ── 4. GET /movies/{id}/showtimes (NEW)
 print("\n[SECTION] Movie Showtimes")
@@ -78,8 +78,8 @@ if FIRST_MOVIE_ID:
     s, d = req("GET", f"/movies/{FIRST_MOVIE_ID}/showtimes")
     ok, showtimes = check(f"GET /movies/{FIRST_MOVIE_ID}/showtimes", s, d, 200)
     if ok and showtimes:
-        print(f"  → Found {len(showtimes)} showtimes for movie {FIRST_MOVIE_ID}")
-        print(f"  → First showtime: {showtimes[0]['show_date']} at {showtimes[0]['show_time']}")
+        print(f"  -> Found {len(showtimes)} showtimes for movie {FIRST_MOVIE_ID}")
+        print(f"  -> First showtime: {showtimes[0]['show_date']} at {showtimes[0]['show_time']}")
         ACTIVE_SHOWTIME_ID = showtimes[0]["id"]
 
 # ── 5. GET /showtimes/{id}/seats (NEW)
@@ -91,7 +91,7 @@ if ACTIVE_SHOWTIME_ID:
         seat_map = seats_data.get("seats", {})
         booked = [k for k,v in seat_map.items() if v]
         free   = [k for k,v in seat_map.items() if not v]
-        print(f"  → Total: {seats_data.get('total_seats')} | Booked: {len(booked)} | Free: {len(free)}")
+        print(f"  -> Total: {seats_data.get('total_seats')} | Booked: {len(booked)} | Free: {len(free)}")
 
 # ── 5.1 GET /movies/{id}/seats (Legacy Backward-Compatible Route)
 print("\n[SECTION] Legacy Seat Map")
@@ -103,7 +103,7 @@ if FIRST_MOVIE_ID:
 print("\n[SECTION] Bookings")
 s, d = req("GET", "/bookings")
 check("GET /bookings (all)", s, d, 200)
-print(f"  → {len(d) if isinstance(d, list) else 0} total bookings in DB")
+print(f"  -> {len(d) if isinstance(d, list) else 0} total bookings in DB")
 
 # ── 7. User registration
 print("\n[SECTION] User Auth")
@@ -111,14 +111,14 @@ test_user = f"testuser_{random.randint(1000,9999)}"
 s, d = req("POST", "/users/register", {"username": test_user, "password": "test123"})
 ok, reg = check("POST /users/register", s, d, 201, "id")
 test_user_id = reg.get("id") if ok else None
-print(f"  → Registered: {test_user} with ID: {test_user_id}")
+print(f"  -> Registered: {test_user} with ID: {test_user_id}")
 
 # ── 8. User login
 s, d = req("POST", "/users/login", {"username": test_user, "password": "test123"})
 check("POST /users/login (correct password)", s, d, 200, "message")
 
 s, d = req("POST", "/users/login", {"username": test_user, "password": "wrongpass"})
-check("POST /users/login (wrong password → 401)", s, d, 401)
+check("POST /users/login (wrong password -> 401)", s, d, 401)
 
 # ── 9. Admin login
 print("\n[SECTION] Admin Auth")
@@ -139,7 +139,7 @@ if ACTIVE_SHOWTIME_ID and test_user_id:
     s, d = req("POST", f"/showtimes/{ACTIVE_SHOWTIME_ID}/book", {
         "user_name": test_user, "user_id": test_user_id, "seats": [TEST_SEAT]
     })
-    check("POST /showtimes/{id}/book duplicate → 400", s, d, 400)
+    check("POST /showtimes/{id}/book duplicate -> 400", s, d, 400)
     
     # Cancel seat
     s, d = req("POST", f"/showtimes/{ACTIVE_SHOWTIME_ID}/cancel", {"seat_no": TEST_SEAT})
@@ -166,7 +166,7 @@ if ok:
     s, d = req("GET", f"/movies/{NEW_MOVIE_ID}/showtimes")
     ok, showtimes = check("GET /movies/{id}/showtimes for new movie", s, d, 200)
     if ok:
-        print(f"  → Generated showtimes: {[{'date': st['show_date'], 'time': st['show_time']} for st in showtimes]}")
+        print(f"  -> Generated showtimes: {[{'date': st['show_date'], 'time': st['show_time']} for st in showtimes]}")
         # Validate that the seeded timings are exactly "11:00 AM" and "04:30 PM"
         timings = {st['show_time'] for st in showtimes}
         if "11:00 AM" in timings and "04:30 PM" in timings:
@@ -182,13 +182,13 @@ if ok:
 # ── 12. Invalid IDs Error Handling
 print("\n[SECTION] Error Handling")
 s, d = req("GET", "/movies/INVALID999")
-check("GET /movies/INVALID999 → 404", s, d, 404)
+check("GET /movies/INVALID999 -> 404", s, d, 404)
 
 s, d = req("GET", "/movies/INVALID999/seats")
-check("GET /movies/INVALID999/seats → 404", s, d, 404)
+check("GET /movies/INVALID999/seats -> 404", s, d, 404)
 
 s, d = req("GET", "/showtimes/99999/seats")
-check("GET /showtimes/99999/seats → 404", s, d, 404)
+check("GET /showtimes/99999/seats -> 404", s, d, 404)
 
 # ── Summary
 print("\n" + "=" * 60)
