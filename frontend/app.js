@@ -1086,7 +1086,8 @@ function updateCancellationDisplay() {
     document.getElementById('cancel-summary-seats').textContent = `Selected to Cancel: ${seatsText}`;
     document.getElementById('cancel-summary-ticket-count').textContent = `Total to Cancel: ${state.seatsSelectedForCancel.length}`;
 
-    const totalRefund = state.seatsSelectedForCancel.length * state.cancelMoviePrice;
+    const refundPerTicket = Math.max(0, state.cancelMoviePrice - 40);
+    const totalRefund = state.seatsSelectedForCancel.length * refundPerTicket;
     document.getElementById('cancel-summary-refund').textContent = `₹${totalRefund}`;
 
     // Enable/disable cancellation button
@@ -1098,7 +1099,8 @@ function handleConfirmCancellation() {
     if (state.seatsSelectedForCancel.length === 0 || !state.cancelShowtimeId) return;
 
     const seatsStr = state.seatsSelectedForCancel.join(', ');
-    const totalRefund = state.seatsSelectedForCancel.length * state.cancelMoviePrice;
+    const refundPerTicket = Math.max(0, state.cancelMoviePrice - 40);
+    const totalRefund = state.seatsSelectedForCancel.length * refundPerTicket;
 
     showModal({
         type: 'danger',
@@ -1107,7 +1109,7 @@ function handleConfirmCancellation() {
         subtitle: 'The selected seats will be cancelled and deleted.',
         details: [
             { label: 'Seats to Cancel', value: seatsStr },
-            { label: 'Total Refund', value: `\u20B9${totalRefund}`, highlight: true }
+            { label: 'Total Refund', value: `\u20B9${totalRefund} (after ₹40/ticket fee)`, highlight: true }
         ],
         confirmLabel: 'Confirm Cancellation',
         confirmIcon: 'fa-trash-can',
