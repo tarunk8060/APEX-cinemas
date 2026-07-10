@@ -1009,10 +1009,14 @@ async function loadBookings() {
             activeHeader.innerHTML = '<i class="fa-solid fa-ticket"></i> Active Reservations';
             listContainer.appendChild(activeHeader);
 
+            const activeGrid = document.createElement('div');
+            activeGrid.className = 'bookings-grid';
+            listContainer.appendChild(activeGrid);
+
             activeList.forEach(booking => {
                 const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: booking.price || 0 };
                 const card = document.createElement('div');
-                card.className = 'booking-row-card glass-card';
+                card.className = 'booking-ticket-card glass-panel';
                 
                 // Sort seats alphabetically
                 booking.seats.sort((a, b) => {
@@ -1028,27 +1032,50 @@ async function loadBookings() {
                 const qrData = `Apex Cinemas Ticket: ${movie.name} | Seats: ${seatsStr} | Date: ${booking.show_date} | Time: ${booking.show_time} | Screen: ${movie.screen_no}`;
 
                 card.innerHTML = `
-                    <div class="booking-indicator-bar"></div>
-                    <div class="booking-info-block">
-                        <h4 class="booking-movie-header">${escapeHTML(movie.name)} (${escapeHTML(movie.language || 'N/A')})</h4>
-                        <p class="booking-meta-details">
-                            <i class="fa-solid fa-desktop"></i> Screen: ${escapeHTML(movie.screen_no)}  |  
-                            <i class="fa-solid fa-calendar-days"></i> ${escapeHTML(booking.show_date)}  |  
-                            <i class="fa-solid fa-clock"></i> ${escapeHTML(booking.show_time)}  |  
-                            <i class="fa-solid fa-chair"></i> Seats: ${escapeHTML(seatsStr)}  |  
-                            <i class="fa-solid fa-indian-rupee-sign"></i> Total: ₹${totalCost}
-                        </p>
+                    <div class="panel-accent-bar accent-red"></div>
+                    <div class="ticket-header">
+                        <h4 class="ticket-movie-title">${escapeHTML(movie.name)}</h4>
+                        <p class="ticket-language">${escapeHTML(movie.language || 'N/A')}</p>
                     </div>
-                    <div class="booking-qr-code">
-                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}" alt="Ticket QR Code" class="qr-code-img">
+                    
+                    <div class="divider"></div>
+                    
+                    <div class="movie-receipt-details">
+                        <div class="receipt-row">
+                            <span class="label">Screen No:</span>
+                            <span class="value">${escapeHTML(movie.screen_no)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Show Date:</span>
+                            <span class="value">${escapeHTML(booking.show_date)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Show Time:</span>
+                            <span class="value">${escapeHTML(booking.show_time)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Reserved Seats:</span>
+                            <span class="value highlight-seats">${escapeHTML(seatsStr)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Total Paid:</span>
+                            <span class="value highlight-price">₹${totalCost}</span>
+                        </div>
                     </div>
-                    <div class="booking-actions">
-                        <button class="btn btn-danger btn-sm" onclick="startCancellation(${booking.showtime_id}, ['${booking.seats.join("','")}'])">
+                    
+                    <div class="divider"></div>
+                    
+                    <div class="ticket-qr-section">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(qrData)}" alt="Ticket QR Code" class="ticket-qr-img">
+                    </div>
+                    
+                    <div class="ticket-footer-actions">
+                        <button class="btn btn-danger btn-block btn-sm" onclick="startCancellation(${booking.showtime_id}, ['${booking.seats.join("','")}'])">
                             <i class="fa-solid fa-circle-xmark"></i> Cancel Booking
                         </button>
                     </div>
                 `;
-                listContainer.appendChild(card);
+                activeGrid.appendChild(card);
             });
         }
 
@@ -1060,10 +1087,14 @@ async function loadBookings() {
             pastHeader.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i> Previous Bookings (Expired after 24 hrs)';
             listContainer.appendChild(pastHeader);
 
+            const pastGrid = document.createElement('div');
+            pastGrid.className = 'bookings-grid';
+            listContainer.appendChild(pastGrid);
+
             pastList.forEach(booking => {
                 const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: booking.price || 0 };
                 const card = document.createElement('div');
-                card.className = 'booking-row-card glass-card expired';
+                card.className = 'booking-ticket-card glass-panel expired';
                 
                 // Sort seats alphabetically
                 booking.seats.sort((a, b) => {
@@ -1077,22 +1108,44 @@ async function loadBookings() {
                 const totalCost = booking.seats.length * movie.price;
 
                 card.innerHTML = `
-                    <div class="booking-indicator-bar"></div>
-                    <div class="booking-info-block">
-                        <h4 class="booking-movie-header">${escapeHTML(movie.name)} (${escapeHTML(movie.language || 'N/A')})</h4>
-                        <p class="booking-meta-details">
-                            <i class="fa-solid fa-desktop"></i> Screen: ${escapeHTML(movie.screen_no)}  |  
-                            <i class="fa-solid fa-calendar-days"></i> ${escapeHTML(booking.show_date)}  |  
-                            <i class="fa-solid fa-clock"></i> ${escapeHTML(booking.show_time)}  |  
-                            <i class="fa-solid fa-chair"></i> Seats: ${escapeHTML(seatsStr)}  |  
-                            <i class="fa-solid fa-indian-rupee-sign"></i> Total: ₹${totalCost}
-                        </p>
+                    <div class="panel-accent-bar accent-red"></div>
+                    <div class="ticket-header">
+                        <h4 class="ticket-movie-title">${escapeHTML(movie.name)}</h4>
+                        <p class="ticket-language">${escapeHTML(movie.language || 'N/A')}</p>
                     </div>
-                    <div class="booking-actions">
-                        <span class="badge-expired"><i class="fa-solid fa-clock"></i> Expired</span>
+                    
+                    <div class="divider"></div>
+                    
+                    <div class="movie-receipt-details">
+                        <div class="receipt-row">
+                            <span class="label">Screen No:</span>
+                            <span class="value">${escapeHTML(movie.screen_no)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Show Date:</span>
+                            <span class="value">${escapeHTML(booking.show_date)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Show Time:</span>
+                            <span class="value">${escapeHTML(booking.show_time)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Reserved Seats:</span>
+                            <span class="value">${escapeHTML(seatsStr)}</span>
+                        </div>
+                        <div class="receipt-row">
+                            <span class="label">Total Paid:</span>
+                            <span class="value">₹${totalCost}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="divider"></div>
+                    
+                    <div class="ticket-footer-actions">
+                        <span class="badge-expired" style="display:flex; justify-content:center;"><i class="fa-solid fa-clock"></i> Expired</span>
                     </div>
                 `;
-                listContainer.appendChild(card);
+                pastGrid.appendChild(card);
             });
         }
 

@@ -1651,18 +1651,72 @@ body {
     border: 1px solid #F47521;
 }
 
-/* Ticket QR Code */
-.booking-qr-code {
-    margin-right: 20px;
-    background: #FFFFFF;
-    padding: 4px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Ticket Card Styling */
+.bookings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+    margin-top: 15px;
 }
-.qr-code-img {
-    width: 60px;
-    height: 60px;
+.booking-ticket-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    transition: var(--transition-smooth);
+}
+.booking-ticket-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.booking-ticket-card.expired {
+    opacity: 0.6;
+}
+.booking-ticket-card.expired .panel-accent-bar {
+    background: var(--text-secondary);
+}
+.ticket-header {
+    text-align: center;
+}
+.ticket-movie-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.ticket-language {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+.highlight-seats {
+    color: var(--cinema-red);
+    font-weight: 700 !important;
+}
+.highlight-price {
+    color: var(--emerald-green);
+    font-weight: 700 !important;
+}
+.ticket-qr-section {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #ffffff;
+    padding: 12px;
+    border-radius: 12px;
+    width: fit-content;
+    margin: 0 auto;
+}
+.ticket-qr-img {
+    width: 120px;
+    height: 120px;
     display: block;
+}
+.ticket-footer-actions {
+    margin-top: auto;
 }
