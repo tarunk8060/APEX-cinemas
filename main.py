@@ -709,7 +709,7 @@ app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 @app.get("/style.css")
 def read_style():
-    return FileResponse("frontend/style.css", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse("frontend/style.css", headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 @app.get("/app.js")
 def read_app_js():
