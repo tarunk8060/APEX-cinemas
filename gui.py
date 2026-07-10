@@ -1110,8 +1110,8 @@ class MovieBookingApp(ctk.CTk):
         # Total seats available
         total_capacity = movie["seats_available"]
         
-        # Cap visual seats at 150 for rendering speed
-        display_capacity = min(total_capacity, 150)
+        # Display all seats
+        display_capacity = total_capacity
         
         rows_str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         self.seat_buttons = {}
@@ -1521,6 +1521,12 @@ class MovieBookingApp(ctk.CTk):
             btn.configure(fg_color="#3E3E3E", hover_color="#5A5A5A")
         else:
             # Select
+            if len(self.selected_seats) >= 10:
+                messagebox.showwarning(
+                    "Booking Limit Reached",
+                    "Disclaimer: You can only book up to 10 tickets at a time. To book more, please complete the payment for these first 10 tickets."
+                )
+                return
             self.selected_seats.append(seat_name)
             btn.configure(fg_color="#4CAF50", hover_color="#45A049") # Vibrant Green
         

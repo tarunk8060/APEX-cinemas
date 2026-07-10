@@ -1041,6 +1041,11 @@ def book_seats(showtime_id: int, request: BookSeatsRequest, db=Depends(get_db)):
 
     if not requested_seats:
         raise HTTPException(status_code=400, detail="No seats requested")
+    if len(requested_seats) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Disclaimer: You can only book up to 10 tickets at a time. To book more, please complete the payment for these first 10 tickets."
+        )
     if len(requested_seats) != len(set(requested_seats)):
         raise HTTPException(status_code=400, detail="Duplicate seats in booking request")
 

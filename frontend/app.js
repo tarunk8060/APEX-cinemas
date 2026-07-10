@@ -673,7 +673,7 @@ function renderSeatGrid(totalSeats, seatStatesMap) {
     const gridContainer = document.getElementById('seat-layout-grid');
     gridContainer.innerHTML = '';
 
-    const displaySeats = Math.min(totalSeats, 150);
+    const displaySeats = totalSeats;
     const rowLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
     if (totalSeats > 120) {
@@ -829,6 +829,10 @@ function selectSeat(seatNo, element) {
         state.selectedSeats.splice(idx, 1);
         element.classList.remove('selected');
     } else {
+        if (state.selectedSeats.length >= 10) {
+            showToast("Disclaimer: You can only book up to 10 tickets at a time. To book more, please complete the payment for these first 10 tickets.", "warning");
+            return;
+        }
         state.selectedSeats.push(seatNo);
         element.classList.add('selected');
     }
