@@ -257,11 +257,13 @@ def init_db():
         conn.commit()
 
         # Migration: Add age_rating column to movies table if it does not exist
-        try:
-            cur.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
-            conn.commit()
-        except Exception:
-            conn.rollback()
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='movies' AND column_name='age_rating'")
+        if not cur.fetchone():
+            try:
+                cur.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
         # Check if booked_seats needs migration
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='booked_seats' AND column_name='movie_id'")
@@ -409,11 +411,14 @@ def init_db():
             conn.commit()
 
             # Migration: Add age_rating column to movies table if it does not exist
-            try:
-                cursor.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
-                conn.commit()
-            except Exception:
-                pass
+            cursor.execute("PRAGMA table_info(movies)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if "age_rating" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
+                    conn.commit()
+                except Exception:
+                    pass
 
             # Check if booked_seats needs migration
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='booked_seats'")
