@@ -453,6 +453,11 @@ async function loadCatalog() {
                        <i class="fa-solid fa-film fa-3x"></i>
                    </div>`;
 
+            const ratingVal = movie.age_rating || 'U';
+            let badgeColorClass = 'badge-u';
+            if (ratingVal === 'A' || ratingVal === '18+') badgeColorClass = 'badge-a';
+            else if (ratingVal === 'UA' || ratingVal === 'PG') badgeColorClass = 'badge-ua';
+
             card.innerHTML = `
                 <div class="card-top-accent"></div>
                 ${posterHTML}
@@ -479,6 +484,10 @@ async function loadCatalog() {
                             <span class="label">🪑 Total Capacity:</span>
                             <span class="value">${movie.seats_available} Seats</span>
                         </div>
+                        <div class="detail-item">
+                            <span class="label">🔞 Rating:</span>
+                            <span class="value badge-rating ${badgeColorClass}">${escapeHTML(ratingVal)}</span>
+                        </div>
                     </div>
                     <button class="btn btn-primary btn-block" onclick="startBooking('${movie.id}')">
                         Book Tickets
@@ -499,6 +508,23 @@ async function loadCatalog() {
 async function startBooking(movieId) {
     try {
         const movie = await apiRequest(`/movies/${movieId}`);
+        
+        // Age Restriction Check
+        const rating = movie.age_rating || 'U';
+        if (rating === 'A' || rating === '18+') {
+            state.pendingBookingMovieId = movieId;
+            document.getElementById('age-warning-modal-overlay').classList.remove('hidden');
+            return;
+        }
+        
+        await proceedWithBooking(movie);
+    } catch (err) {
+        showToast('Error initializing booking details: ' + err.message, 'error');
+    }
+}
+
+async function proceedWithBooking(movie) {
+    try {
         state.selectedMovie = movie;
         state.selectedSeats = [];
         state.selectedShowtimeId = null;
@@ -519,7 +545,7 @@ async function startBooking(movieId) {
         updateReceiptDisplay();
 
         // Load Showtimes Map from API
-        const showtimes = await apiRequest(`/movies/${movieId}/showtimes`);
+        const showtimes = await apiRequest(`/movies/${movie.id}/showtimes`);
         state.showtimes = showtimes;
         renderShowtimes(showtimes);
 
@@ -532,7 +558,32 @@ async function startBooking(movieId) {
 
         renderRecommendations(movie.recommendations || []);
     } catch (err) {
-        showToast('Error initializing booking details: ' + err.message, 'error');
+        showToast('Error loading showtimes: ' + err.message, 'error');
+    }
+}
+
+function confirmAgeWarning() {
+    document.getElementById('age-warning-modal-overlay').classList.add('hidden');
+    if (state.pendingBookingMovieId) {
+        const movieId = state.pendingBookingMovieId;
+        state.pendingBookingMovieId = null;
+        apiRequest(`/movies/${movieId}`).then(movie => {
+            proceedWithBooking(movie);
+        }).catch(err => {
+            showToast('Error: ' + err.message, 'error');
+        });
+    }
+}
+
+function closeAgeWarningModal() {
+    document.getElementById('age-warning-modal-overlay').classList.add('hidden');
+    state.pendingBookingMovieId = null;
+    showView('catalog');
+}
+
+function handleAgeWarningOverlayClick(event) {
+    if (event.target.id === 'age-warning-modal-overlay') {
+        closeAgeWarningModal();
     }
 }
 
@@ -974,6 +1025,8 @@ async function loadBookings() {
                 const seatsStr = booking.seats.join(', ');
                 const totalCost = booking.seats.length * movie.price;
 
+                const qrData = `Apex Cinemas Ticket: ${movie.name} | Seats: ${seatsStr} | Date: ${booking.show_date} | Time: ${booking.show_time} | Screen: ${movie.screen_no}`;
+
                 card.innerHTML = `
                     <div class="booking-indicator-bar"></div>
                     <div class="booking-info-block">
@@ -985,6 +1038,9 @@ async function loadBookings() {
                             <i class="fa-solid fa-chair"></i> Seats: ${escapeHTML(seatsStr)}  |  
                             <i class="fa-solid fa-indian-rupee-sign"></i> Total: ₹${totalCost}
                         </p>
+                    </div>
+                    <div class="booking-qr-code">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}" alt="Ticket QR Code" class="qr-code-img">
                     </div>
                     <div class="booking-actions">
                         <button class="btn btn-danger btn-sm" onclick="startCancellation(${booking.showtime_id}, ['${booking.seats.join("','")}'])">

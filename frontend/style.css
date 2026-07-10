@@ -959,7 +959,9 @@ body {
 
 .booking-row-card {
     border-radius: 10px;
-    height: 85px;
+    min-height: 85px;
+    height: auto;
+    padding: 10px 0;
     display: flex;
     align-items: center;
     overflow: hidden;
@@ -1510,4 +1512,157 @@ body {
     .carousel-image {
         height: 250px;
     }
+}
+
+/* Age Warning Modal Styling */
+.age-warning-card {
+    background: #FFFFFF;
+    color: #1A1A1A;
+    width: 90%;
+    max-width: 440px;
+    padding: 40px 32px 30px;
+    border-radius: 24px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: modalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    border: 1px solid rgba(229, 9, 20, 0.1);
+}
+.age-badge-circle {
+    width: 60px;
+    height: 60px;
+    background: #F47521;
+    color: #FFFFFF;
+    font-size: 26px;
+    font-weight: 800;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-family: 'Outfit', 'Inter', sans-serif;
+}
+.age-warning-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #1A1A1A;
+}
+.age-warning-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #666666;
+    margin-bottom: 24px;
+}
+.age-warning-divider {
+    border: 0;
+    height: 1px;
+    background: #EEEEEE;
+    margin: 20px 0;
+}
+.age-warning-conditions {
+    text-align: left;
+    margin-bottom: 30px;
+}
+.condition-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+.condition-row:last-child {
+    margin-bottom: 0;
+}
+.condition-icon-badge {
+    width: 50px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #333333;
+    border: 1.5px solid #333333;
+    border-radius: 4px;
+    padding: 2px 0;
+    text-align: center;
+    line-height: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.condition-icon-badge .sub {
+    font-size: 7px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.condition-icon-wrapper {
+    width: 50px;
+    display: flex;
+    justify-content: center;
+    font-size: 20px;
+    color: #333333;
+}
+.condition-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: #444444;
+    line-height: 1.4;
+    flex: 1;
+}
+.age-warning-btn {
+    background: #111111 !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    padding: 14px 24px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    width: 100% !important;
+    transition: background 0.2s, transform 0.1s !important;
+    cursor: pointer !important;
+}
+.age-warning-btn:hover {
+    background: #222222 !important;
+    transform: translateY(-1px);
+}
+.age-warning-btn:active {
+    transform: translateY(0);
+}
+
+.badge-rating {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 800;
+    font-size: 11px;
+    text-transform: uppercase;
+    display: inline-block;
+}
+.badge-rating.badge-u {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4CAF50;
+    border: 1px solid #4CAF50;
+}
+.badge-rating.badge-ua {
+    background: rgba(255, 152, 0, 0.15);
+    color: #FF9800;
+    border: 1px solid #FF9800;
+}
+.badge-rating.badge-a {
+    background: rgba(244, 117, 33, 0.15);
+    color: #F47521;
+    border: 1px solid #F47521;
+}
+
+/* Ticket QR Code */
+.booking-qr-code {
+    margin-right: 20px;
+    background: #FFFFFF;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.qr-code-img {
+    width: 60px;
+    height: 60px;
+    display: block;
 }

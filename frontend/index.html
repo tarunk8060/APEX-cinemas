@@ -474,6 +474,34 @@
         </div>
     </div>
 
+    <!-- Age Warning Modal -->
+    <div id="age-warning-modal-overlay" class="modal-overlay hidden" onclick="handleAgeWarningOverlayClick(event)">
+        <div class="age-warning-card">
+            <div class="age-badge-circle">A</div>
+            <h3 class="age-warning-title">This movie has been certified A</h3>
+            <p class="age-warning-desc">The content may include mature themes, violence, strong language, or adult scenes.</p>
+            
+            <hr class="age-warning-divider">
+            
+            <div class="age-warning-conditions">
+                <div class="condition-row">
+                    <span class="condition-icon-badge">18+ <span class="sub">ONLY</span></span>
+                    <span class="condition-text">For viewers aged 18 and above only</span>
+                </div>
+                <div class="condition-row">
+                    <span class="condition-icon-wrapper"><i class="fa-solid fa-id-card"></i></span>
+                    <span class="condition-text">Age proof will be checked at the theatre</span>
+                </div>
+                <div class="condition-row">
+                    <span class="condition-icon-wrapper"><i class="fa-solid fa-ban"></i></span>
+                    <span class="condition-text">No refunds will be issued for entry denied due to age restrictions</span>
+                </div>
+            </div>
+            
+            <button class="btn age-warning-btn" onclick="confirmAgeWarning()">Confirm and proceed</button>
+        </div>
+    </div>
+
     <script src="app.js?v=2"></script>
 </body>
 

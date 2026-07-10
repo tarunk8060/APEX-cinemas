@@ -587,7 +587,7 @@ class MovieBookingApp(ctk.CTk):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(f"SELECT id, name, genre, language, price, seats_available, screen_no FROM movies WHERE name = {PH}", (name,))
+            cursor.execute(f"SELECT id, name, genre, language, price, seats_available, screen_no, age_rating FROM movies WHERE name = {PH}", (name,))
             row = cursor.fetchone()
             conn.close()
             if row:
@@ -598,7 +598,8 @@ class MovieBookingApp(ctk.CTk):
                     "language": row[3],
                     "price": row[4],
                     "seats_available": row[5],
-                    "screen_no": row[6]
+                    "screen_no": row[6],
+                    "age_rating": row[7] if len(row) > 7 and row[7] else "U"
                 }
             return None
         except Exception:
@@ -608,7 +609,7 @@ class MovieBookingApp(ctk.CTk):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, genre, language, price, seats_available, screen_no FROM movies")
+            cursor.execute("SELECT id, name, genre, language, price, seats_available, screen_no, age_rating FROM movies")
             rows = cursor.fetchall()
             conn.close()
 
@@ -621,7 +622,8 @@ class MovieBookingApp(ctk.CTk):
                     "language": row[3],
                     "price": row[4],
                     "seats_available": row[5],
-                    "screen_no": row[6]
+                    "screen_no": row[6],
+                    "age_rating": row[7] if len(row) > 7 and row[7] else "U"
                 })
             return movies
         except Exception as e:
@@ -784,7 +786,7 @@ class MovieBookingApp(ctk.CTk):
             messagebox.showerror("Database Error", f"Error fetching bookings: {e}")
             return []
 
-    def add_movie_to_db(self, m_id, name, genre, language, price, seats, screen):
+    def add_movie_to_db(self, m_id, name, genre, language, price, seats, screen, age_rating):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -796,9 +798,9 @@ class MovieBookingApp(ctk.CTk):
                 return False, f"Movie ID '{m_id}' already exists."
 
             cursor.execute(f"""
-            INSERT INTO movies (id, name, genre, language, price, seats_available, screen_no)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (m_id, name, genre, language, price, seats, screen))
+            INSERT INTO movies (id, name, genre, language, price, seats_available, screen_no, age_rating)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (m_id, name, genre, language, price, seats, screen, age_rating))
             conn.commit()
             conn.close()
             return True, "Movie added successfully!"
@@ -905,7 +907,8 @@ class MovieBookingApp(ctk.CTk):
             ("🗣️  Language:", movie["language"]),
             ("🖥️  Screen:", movie["screen_no"]),
             ("🎟️  Price:", f"₹{movie['price']}"),
-            ("🪑  Capacity:", f"{movie['seats_available']} Seats")
+            ("🪑  Capacity:", f"{movie['seats_available']} Seats"),
+            ("🔞  Rating:", movie.get("age_rating", "U"))
         ]
 
         for i, (label, val) in enumerate(labels):
@@ -931,9 +934,111 @@ class MovieBookingApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             height=36,
             corner_radius=8,
-            command=lambda m=movie: self.show_booking_tab(m)
+            command=lambda m=movie: self.check_age_and_book(m)
         )
         book_btn.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
+
+    def check_age_and_book(self, movie):
+        rating = movie.get("age_rating", "U")
+        if rating == "A" or rating == "18+":
+            self.show_age_restriction_modal(movie)
+        else:
+            self.show_booking_tab(movie)
+
+    def show_age_restriction_modal(self, movie):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Age Certification Warning")
+        dialog.geometry("450x380")
+        dialog.resizable(False, False)
+        dialog.transient(self) # Keep it on top of the main window
+        dialog.grab_set() # Block other interactions until closed
+        
+        # Center the dialog window
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Top Circle Badge
+        badge_frame = ctk.CTkFrame(dialog, width=60, height=60, corner_radius=30, fg_color="#F47521")
+        badge_frame.pack(pady=(30, 15))
+        badge_frame.pack_propagate(False)
+        badge_lbl = ctk.CTkLabel(badge_frame, text="A", font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"), text_color="white")
+        badge_lbl.pack(expand=True)
+        
+        # Title
+        title_lbl = ctk.CTkLabel(
+            dialog,
+            text="This movie has been certified A",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold")
+        )
+        title_lbl.pack(pady=5)
+        
+        # Description
+        desc_lbl = ctk.CTkLabel(
+            dialog,
+            text="The content may include mature themes, violence,\nstrong language, or adult scenes.",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="gray50"
+        )
+        desc_lbl.pack(pady=10)
+        
+        # Conditions list frame
+        cond_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        cond_frame.pack(pady=15, padx=30, fill="x")
+        
+        # Helper to add condition row
+        def add_cond(text, icon):
+            row = ctk.CTkFrame(cond_frame, fg_color="transparent")
+            row.pack(anchor="w", fill="x", pady=4)
+            icon_lbl = ctk.CTkLabel(row, text=icon, font=ctk.CTkFont(size=14, weight="bold"), width=30)
+            icon_lbl.pack(side="left", padx=(0, 10))
+            text_lbl = ctk.CTkLabel(row, text=text, font=ctk.CTkFont(family="Segoe UI", size=11), anchor="w")
+            text_lbl.pack(side="left", fill="x")
+            
+        add_cond("For viewers aged 18 and above only", "🔞")
+        add_cond("Age proof will be checked at the theatre", "🪪")
+        add_cond("No refunds will be issued for entry denied", "🚫")
+        
+        # Actions frame
+        actions_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        actions_frame.pack(side="bottom", fill="x", pady=25, padx=30)
+        
+        def on_confirm():
+            dialog.destroy()
+            self.show_booking_tab(movie)
+            
+        def on_cancel():
+            dialog.destroy()
+            self.show_movies_tab()
+            
+        btn_proceed = ctk.CTkButton(
+            actions_frame,
+            text="Confirm and proceed",
+            fg_color="#111111",
+            hover_color="#222222",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            height=40,
+            command=on_confirm
+        )
+        btn_proceed.pack(fill="x", side="top", pady=(0, 8))
+        
+        btn_cancel = ctk.CTkButton(
+            actions_frame,
+            text="Cancel",
+            fg_color="transparent",
+            hover_color=("#EAEAEA", "#333333"),
+            border_width=1,
+            border_color="gray",
+            text_color=("gray10", "gray90"),
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            height=32,
+            command=on_cancel
+        )
+        btn_cancel.pack(fill="x", side="top")
 
     # -------------------------------------------------------------
     # VIEW: INTERACTIVE SEAT BOOKING TAB
@@ -1521,7 +1626,7 @@ class MovieBookingApp(ctk.CTk):
         # Row card
         row_card = ctk.CTkFrame(
             parent, 
-            height=85, 
+            height=95, 
             corner_radius=10, 
             border_width=1, 
             border_color=("#DBDBDB", "#2B2B2B")
@@ -1557,6 +1662,25 @@ class MovieBookingApp(ctk.CTk):
             anchor="w"
         )
         details_lbl.pack(anchor="w", pady=(2, 0))
+
+        # Generate QR code offline
+        try:
+            import qrcode
+            import PIL.Image
+            
+            qr_text = f"APEX-{booking['movie_name']}-{booking['seat_no']}-{booking.get('show_date', 'N/A')}"
+            qr = qrcode.QRCode(version=1, box_size=2, border=1)
+            qr.add_data(qr_text)
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert to CTkImage
+            ctk_qr = ctk.CTkImage(light_image=qr_img, dark_image=qr_img, size=(60, 60))
+            
+            qr_label = ctk.CTkLabel(row_card, image=ctk_qr, text="")
+            qr_label.pack(side="right", padx=(10, 25), pady=17)
+        except Exception as e:
+            print(f"Failed to generate QR code: {e}")
 
         # Cancel Booking Button (Right aligned)
         cancel_btn = ctk.CTkButton(
@@ -1731,7 +1855,8 @@ class MovieBookingApp(ctk.CTk):
             ("language", "Language (e.g. English)"),
             ("price", "Ticket Price (INR)"),
             ("seats", "Total Theatre Seats"),
-            ("screen", "Screen Number/Type (e.g. Screen 1)")
+            ("screen", "Screen Number/Type (e.g. Screen 1)"),
+            ("age_rating", "Age Rating (e.g. U, UA, A)")
         ]
 
         for idx, (key, placeholder) in enumerate(fields):
@@ -1828,6 +1953,7 @@ class MovieBookingApp(ctk.CTk):
         price_str = self.inputs["price"].get().strip()
         seats_str = self.inputs["seats"].get().strip()
         screen = self.inputs["screen"].get().strip()
+        age_rating = self.inputs["age_rating"].get().strip().upper() or "U"
 
         # Input Validations
         if not all([m_id, name, genre, language, price_str, seats_str, screen]):
@@ -1851,7 +1977,7 @@ class MovieBookingApp(ctk.CTk):
             return
 
         # Insert to db
-        success, msg = self.add_movie_to_db(m_id, name, genre, language, price, seats, screen)
+        success, msg = self.add_movie_to_db(m_id, name, genre, language, price, seats, screen, age_rating)
         if success:
             messagebox.showinfo("Success", f"Successfully added movie '{name}' to database!")
             # Clear inputs

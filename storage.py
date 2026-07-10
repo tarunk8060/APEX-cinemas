@@ -24,7 +24,7 @@ class AdminPanel:
                     print("Invalid login")
                 return False
 
-        def add_movie(self, movie_id=None, name=None, language=None, price=None, seats_available=None, screen_no=None, image_url=None):
+        def add_movie(self, movie_id=None, name=None, language=None, price=None, seats_available=None, screen_no=None, image_url=None, age_rating=None):
             if movie_id is None:
                 movie_id = input("Enter movie ID: ")
             if name is None:
@@ -39,14 +39,16 @@ class AdminPanel:
                 screen_no = input("Enter screen number: ")
             if image_url is None:
                 image_url = input("Enter movie poster image URL (optional, press Enter to skip): ").strip() or None
+            if age_rating is None:
+                age_rating = input("Enter movie age rating (optional, e.g. U, UA, A, default is U): ").strip().upper() or "U"
 
             conn = sqlite3.connect("movie.db")
             cursor = conn.cursor()
 
             cursor.execute("""
-            INSERT INTO movies(id, name, language, price, seats_available, screen_no, image_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (movie_id, name, language, price, seats_available, screen_no, image_url))
+            INSERT INTO movies(id, name, language, price, seats_available, screen_no, image_url, age_rating)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (movie_id, name, language, price, seats_available, screen_no, image_url, age_rating))
 
             conn.commit()
             conn.close()

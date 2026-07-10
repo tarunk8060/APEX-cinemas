@@ -251,9 +251,17 @@ def init_db():
             price         INTEGER NOT NULL,
             seats_available INTEGER NOT NULL,
             screen_no     TEXT NOT NULL,
-            image_url     TEXT
+            image_url     TEXT,
+            age_rating    TEXT DEFAULT 'U'
         )""")
         conn.commit()
+
+        # Migration: Add age_rating column to movies table if it does not exist
+        try:
+            cur.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         # Check if booked_seats needs migration
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='booked_seats' AND column_name='movie_id'")
@@ -328,17 +336,17 @@ def init_db():
         if count_val == 0:
             seed_movies = [
                 ("MOV001", "Avatar", "Action Adventure Fantasy", "English", 180, 112, "IMAX 1",
-                 "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg"),
+                 "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg", "UA"),
                 ("MOV002", "Spectre", "Action Adventure Thriller", "English", 150, 90, "Screen B2",
-                 "https://cdn.kinocheck.com/i/i68lg3r6qd.jpg"),
+                 "https://cdn.kinocheck.com/i/i68lg3r6qd.jpg", "UA"),
                 ("MOV003", "Fight Club", "Action", "English", 100, 60, "Screen A1",
-                 "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg"),
+                 "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg", "A"),
                 ("MOV004", "The Dark Knight Rises", "Action Crime Drama", "English", 200, 125, "Dolby Atmos",
-                 "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg"),
+                 "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg", "UA"),
             ]
             cur.executemany(
-                "INSERT INTO movies (id, name, genre, language, price, seats_available, screen_no, image_url) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                "INSERT INTO movies (id, name, genre, language, price, seats_available, screen_no, image_url, age_rating) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
                 seed_movies
             )
             conn.commit()
@@ -395,9 +403,17 @@ def init_db():
                 price         INTEGER NOT NULL,
                 seats_available INTEGER NOT NULL,
                 screen_no     TEXT NOT NULL,
-                image_url     TEXT
+                image_url     TEXT,
+                age_rating    TEXT DEFAULT 'U'
             )""")
             conn.commit()
+
+            # Migration: Add age_rating column to movies table if it does not exist
+            try:
+                cursor.execute("ALTER TABLE movies ADD COLUMN age_rating TEXT DEFAULT 'U'")
+                conn.commit()
+            except Exception:
+                pass
 
             # Check if booked_seats needs migration
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='booked_seats'")
@@ -481,17 +497,17 @@ def init_db():
             if count_val == 0:
                 seed_movies = [
                     ("MOV001", "Avatar", "Action Adventure Fantasy", "English", 180, 112, "IMAX 1",
-                     "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg"),
+                     "https://image.tmdb.org/t/p/w500/6EiRUJpuoeQPghrs3YNktfnqOVh.jpg", "UA"),
                     ("MOV002", "Spectre", "Action Adventure Thriller", "English", 150, 90, "Screen B2",
-                     "https://cdn.kinocheck.com/i/i68lg3r6qd.jpg"),
+                     "https://cdn.kinocheck.com/i/i68lg3r6qd.jpg", "UA"),
                     ("MOV003", "Fight Club", "Action", "English", 100, 60, "Screen A1",
-                     "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg"),
+                     "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg", "A"),
                     ("MOV004", "The Dark Knight Rises", "Action Crime Drama", "English", 200, 125, "Dolby Atmos",
-                     "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg"),
+                     "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjmtn1lby.jpg", "UA"),
                 ]
                 cursor.executemany(
-                    "INSERT OR IGNORE INTO movies (id, name, genre, language, price, seats_available, screen_no, image_url) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO movies (id, name, genre, language, price, seats_available, screen_no, image_url, age_rating) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     seed_movies
                 )
                 conn.commit()
@@ -562,6 +578,7 @@ class MovieBase(BaseModel):
     seats_available: int = Field(..., json_schema_extra={"example": 90})
     screen_no: str = Field(..., json_schema_extra={"example": "A1"})
     image_url: Optional[str] = Field(None, json_schema_extra={"example": "https://image.tmdb.org/t/p/w500/abc.jpg"})
+    age_rating: Optional[str] = Field("U", json_schema_extra={"example": "U"})
 
 class MovieCreate(MovieBase):
     show_timings: Optional[str] = Field(None, json_schema_extra={"example": "02:30 PM, 06:30 PM"})
@@ -706,7 +723,7 @@ def read_root():
 def list_movies(db=Depends(get_db)):
     cursor = get_cursor(db)
     cursor.execute(
-        "SELECT id, name, genre, language, price, seats_available, screen_no, image_url FROM movies"
+        "SELECT id, name, genre, language, price, seats_available, screen_no, image_url, age_rating FROM movies"
     )
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
@@ -768,7 +785,7 @@ def debug_db():
 def get_movie(movie_id: str, db=Depends(get_db)):
     cursor = get_cursor(db)
     cursor.execute(
-        f"SELECT id, name, genre, language, price, seats_available, screen_no, image_url "
+        f"SELECT id, name, genre, language, price, seats_available, screen_no, image_url, age_rating "
         f"FROM movies WHERE id = {PH}",
         (movie_id,)
     )
@@ -797,10 +814,10 @@ def add_movie(movie: MovieCreate, db=Depends(get_db)):
 
     try:
         cursor.execute(
-            f"INSERT INTO movies(id, name, genre, language, price, seats_available, screen_no, image_url) "
-            f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})",
+            f"INSERT INTO movies(id, name, genre, language, price, seats_available, screen_no, image_url, age_rating) "
+            f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})",
             (movie.id, movie.name, movie.genre, movie.language,
-             movie.price, movie.seats_available, movie.screen_no, movie.image_url)
+             movie.price, movie.seats_available, movie.screen_no, movie.image_url, movie.age_rating)
         )
         db.commit()
 
