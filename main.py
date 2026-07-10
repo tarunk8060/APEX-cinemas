@@ -708,11 +708,11 @@ def read_style():
 
 @app.get("/app.js")
 def read_app_js():
-    return FileResponse("frontend/app.js", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse("frontend/app.js", headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 @app.get("/")
 def read_root():
-    return FileResponse("frontend/index.html", headers={"Cache-Control": "public, max-age=3600"})
+    return FileResponse("frontend/index.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTES
