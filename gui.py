@@ -17,6 +17,44 @@ def get_current_local_time():
     # Get current time in UTC and convert to IST
     return datetime.datetime.now(datetime.timezone.utc).astimezone(ist_tz).replace(tzinfo=None)
 
+def parse_showtime_datetime(show_date_str: str, show_time_str: str):
+    import datetime
+    import re
+    try:
+        show_date_obj = datetime.datetime.strptime(show_date_str.strip(), "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+    t_str = show_time_str.strip().upper()
+    t_str = re.sub(r'\s+', ' ', t_str)
+
+    formats = [
+        "%I:%M %p",  # "02:30 PM", "2:30 PM", "11:00 AM"
+        "%I:%M%p",   # "02:30PM", "2:30PM"
+        "%I %p",     # "2 PM", "11 AM"
+        "%I%p",      # "2PM", "11AM", "2PM", "8PM", "9AM"
+        "%H:%M",     # "14:30", "09:30"
+        "%H:%M:%S",  # "14:30:00"
+    ]
+
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(t_str, fmt)
+            return datetime.datetime.combine(show_date_obj, dt.time())
+        except ValueError:
+            continue
+
+    # Fallback to handle dots, etc. E.g. "9.30 AM" -> "9:30 AM"
+    t_str_alt = t_str.replace('.', ':')
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(t_str_alt, fmt)
+            return datetime.datetime.combine(show_date_obj, dt.time())
+        except ValueError:
+            continue
+
+    return None
+
 def get_db_connection():
     if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
@@ -675,8 +713,8 @@ class MovieBookingApp(ctk.CTk):
             import datetime
             now = get_current_local_time()
             try:
-                show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
-                if show_dt - datetime.timedelta(hours=1) < now:
+                show_dt = parse_showtime_datetime(show_date_str, show_time_str)
+                if show_dt and show_dt - datetime.timedelta(hours=1) < now:
                     conn.close()
                     messagebox.showerror("Cancellation Error", "Cannot cancel a booking within 1 hour of the show start time.")
                     return False
@@ -727,8 +765,8 @@ class MovieBookingApp(ctk.CTk):
                 show_date_str = row[6]
                 show_time_str = row[7]
                 try:
-                    show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
-                    if show_dt < now:
+                    show_dt = parse_showtime_datetime(show_date_str, show_time_str)
+                    if show_dt and show_dt < now:
                         continue # Skip past bookings
                 except Exception as parse_err:
                     print(f"Error parsing showtime in get_all_bookings_from_db: {parse_err}")

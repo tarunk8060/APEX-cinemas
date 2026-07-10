@@ -69,6 +69,44 @@ def get_current_local_time():
     # Get current time in UTC and convert to IST
     return datetime.datetime.now(datetime.timezone.utc).astimezone(ist_tz).replace(tzinfo=None)
 
+def parse_showtime_datetime(show_date_str: str, show_time_str: str):
+    import datetime
+    import re
+    try:
+        show_date_obj = datetime.datetime.strptime(show_date_str.strip(), "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+    t_str = show_time_str.strip().upper()
+    t_str = re.sub(r'\s+', ' ', t_str)
+
+    formats = [
+        "%I:%M %p",  # "02:30 PM", "2:30 PM", "11:00 AM"
+        "%I:%M%p",   # "02:30PM", "2:30PM"
+        "%I %p",     # "2 PM", "11 AM"
+        "%I%p",      # "2PM", "11AM", "2PM", "8PM", "9AM"
+        "%H:%M",     # "14:30", "09:30"
+        "%H:%M:%S",  # "14:30:00"
+    ]
+
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(t_str, fmt)
+            return datetime.datetime.combine(show_date_obj, dt.time())
+        except ValueError:
+            continue
+
+    # Fallback to handle dots, etc. E.g. "9.30 AM" -> "9:30 AM"
+    t_str_alt = t_str.replace('.', ':')
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(t_str_alt, fmt)
+            return datetime.datetime.combine(show_date_obj, dt.time())
+        except ValueError:
+            continue
+
+    return None
+
 def lowercase_dict_factory(cursor, row):
     return {col[0].lower(): row[idx] for idx, col in enumerate(cursor.description)}
 
@@ -163,9 +201,9 @@ def cleanup_expired_bookings(db):
             
             try:
                 # Combine show date and time to parse
-                show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
+                show_dt = parse_showtime_datetime(show_date_str, show_time_str)
                 # Expire booking 24 hours after the show has started
-                if show_dt + datetime.timedelta(hours=24) < now:
+                if show_dt and show_dt + datetime.timedelta(hours=24) < now:
                     expired_rows.append(r)
             except Exception as parse_err:
                 print(f"Error parsing showtime in cleanup: {parse_err}")
@@ -855,18 +893,19 @@ def get_movie_showtimes(movie_id: str, db=Depends(get_db)):
             "show_time": row[3]
         }
         
-        try:
-            # Parse showtime to datetime object
-            show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
+        show_dt = parse_showtime_datetime(r['show_date'], r['show_time'])
+        if show_dt:
             # Only include showtimes that are in the future or currently starting
             if show_dt >= now_local:
-                active_showtimes.append(r)
-        except Exception as e:
-            # Keep showtimes with format errors to prevent silently breaking the UI
-            print(f"Error parsing showtime: {e}")
-            active_showtimes.append(r)
+                active_showtimes.append((show_dt, r))
+        else:
+            print(f"Error parsing showtime: {r['show_date']} {r['show_time']}")
+            active_showtimes.append((datetime.datetime.max, r))
             
-    return active_showtimes
+    # Sort chronologically by the parsed datetime
+    active_showtimes.sort(key=lambda x: x[0])
+    
+    return [item[1] for item in active_showtimes]
 
 # 5. View seats for a showtime
 @app.get("/showtimes/{showtime_id}/seats")
@@ -1032,8 +1071,8 @@ def cancel_seats(showtime_id: int, request: CancelSeatRequest, db=Depends(get_db
     import datetime
     now = get_current_local_time()
     try:
-        show_dt = datetime.datetime.strptime(f"{r['show_date']} {r['show_time']}", "%Y-%m-%d %I:%M %p")
-        if show_dt - datetime.timedelta(hours=1) < now:
+        show_dt = parse_showtime_datetime(r['show_date'], r['show_time'])
+        if show_dt and show_dt - datetime.timedelta(hours=1) < now:
             raise HTTPException(
                 status_code=400,
                 detail="Cannot cancel tickets within 1 hour of the show start time"
@@ -1110,8 +1149,8 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
         show_date_str = r["show_date"]
         show_time_str = r["show_time"]
         try:
-            show_dt = datetime.datetime.strptime(f"{show_date_str} {show_time_str}", "%Y-%m-%d %I:%M %p")
-            if show_dt < now:
+            show_dt = parse_showtime_datetime(show_date_str, show_time_str)
+            if show_dt and show_dt < now:
                 r["is_expired"] = True
                 final_past.append(r)
             else:
