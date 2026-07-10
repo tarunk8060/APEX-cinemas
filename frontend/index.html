@@ -510,7 +510,28 @@
         </div>
     </div>
 
-    <script src="app.js?v=4"></script>
+    <!-- DISCLAIMER MODAL OVERLAY -->
+    <div id="disclaimer-modal-overlay" class="age-warning-modal-overlay" onclick="handleDisclaimerOverlayClick(event)" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(15px);">
+        <div class="age-warning-card glass-panel" style="width: 450px; text-align: center; border-radius: 16px; padding: 30px; border: 1px solid var(--border-color); background: var(--bg-card); display: flex; flex-direction: column; gap: 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); position: relative; animation: modalSlideUp 0.3s ease;">
+            <div class="panel-accent-bar accent-red" style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--cinema-red); border-top-left-radius: 16px; border-top-right-radius: 16px;"></div>
+            <div class="modal-icon-badge" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(229, 9, 20, 0.15); color: var(--cinema-red); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto;">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+            <h3 class="modal-title" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0;">Booking Limit Disclaimer</h3>
+            <p class="modal-subtitle" style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin: 0;">You can select and book a maximum of 10 tickets at a single time.</p>
+            <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; font-size: 13px; color: var(--text-primary); text-align: left; line-height: 1.6;">
+                <p style="margin: 0 0 8px 0; font-weight: 600; color: var(--cinema-red);"><i class="fa-solid fa-circle-info"></i> How to book more:</p>
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li>Complete the checkout process for the currently selected 10 seats.</li>
+                    <li>Pay for the reservation.</li>
+                    <li>Return to the seat layout to reserve additional seats.</li>
+                </ol>
+            </div>
+            <button class="btn btn-primary btn-block btn-lg" onclick="closeDisclaimerModal()" style="padding: 12px 0; font-size: 14px; font-weight: 600; border-radius: 10px;">Got It, Continue</button>
+        </div>
+    </div>
+
+    <script src="app.js?v=5"></script>
 </body>
 
 </html>

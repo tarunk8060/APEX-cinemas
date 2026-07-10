@@ -587,6 +587,22 @@ function handleAgeWarningOverlayClick(event) {
     }
 }
 
+function showDisclaimerModal() {
+    const modal = document.getElementById('disclaimer-modal-overlay');
+    modal.style.display = 'flex';
+}
+
+function closeDisclaimerModal() {
+    const modal = document.getElementById('disclaimer-modal-overlay');
+    modal.style.display = 'none';
+}
+
+function handleDisclaimerOverlayClick(event) {
+    if (event.target.id === 'disclaimer-modal-overlay') {
+        closeDisclaimerModal();
+    }
+}
+
 function renderShowtimes(showtimes) {
     const container = document.getElementById('showtimes-list');
     container.innerHTML = '';
@@ -830,7 +846,7 @@ function selectSeat(seatNo, element) {
         element.classList.remove('selected');
     } else {
         if (state.selectedSeats.length >= 10) {
-            showToast("Disclaimer: You can only book up to 10 tickets at a time. To book more, please complete the payment for these first 10 tickets.", "warning");
+            showDisclaimerModal();
             return;
         }
         state.selectedSeats.push(seatNo);
