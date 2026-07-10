@@ -1683,6 +1683,11 @@ body {
 }
 .ticket-header {
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
 .ticket-movie-title {
     font-size: 18px;
@@ -1707,10 +1712,10 @@ body {
     justify-content: center;
     align-items: center;
     background: #ffffff;
-    padding: 12px;
-    border-radius: 12px;
+    padding: 20px;
+    border-radius: 16px;
     width: fit-content;
-    margin: 0 auto;
+    margin: 15px auto;
 }
 .ticket-qr-img {
     width: 120px;
