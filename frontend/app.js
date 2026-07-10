@@ -1434,6 +1434,7 @@ async function handleNewMovieSubmit(e) {
     const seatsInput = parseInt(document.getElementById('admin-movie-seats').value);
     const screenInput = document.getElementById('admin-movie-screen').value.trim();
     const imageInput = document.getElementById('admin-movie-image').value.trim() || null;
+    const ratingInput = document.getElementById('admin-movie-rating').value || 'U';
     const timingsInput = document.getElementById('admin-movie-timings').value.trim() || null;
 
     try {
@@ -1448,6 +1449,7 @@ async function handleNewMovieSubmit(e) {
                 seats_available: seatsInput,
                 screen_no: screenInput,
                 image_url: imageInput,
+                age_rating: ratingInput,
                 show_timings: timingsInput
             })
         });
@@ -1463,6 +1465,7 @@ async function handleNewMovieSubmit(e) {
         document.getElementById('admin-movie-seats').value = '';
         document.getElementById('admin-movie-screen').value = '';
         document.getElementById('admin-movie-image').value = '';
+        document.getElementById('admin-movie-rating').value = '';
         document.getElementById('admin-movie-timings').value = '';
 
         loadAdminPanel();
