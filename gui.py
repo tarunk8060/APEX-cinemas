@@ -1009,76 +1009,199 @@ class MovieBookingApp(ctk.CTk):
         display_capacity = min(total_capacity, 150)
         
         rows_str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        cols_per_row = 10
-        num_rows = (display_capacity + cols_per_row - 1) // cols_per_row
-
-        # Configure columns inside layout grid
-        grid_container.grid_columnconfigure(0, weight=0, minsize=40) # row label
-        for c in range(1, 12):
-            if c == 6:
-                grid_container.grid_columnconfigure(c, weight=0, minsize=25) # Aisle spacer
-            else:
-                grid_container.grid_columnconfigure(c, weight=0, minsize=40)
-
-        # Render seats
         self.seat_buttons = {}
-        for r in range(num_rows):
-            row_letter = rows_str[r]
-            
-            # Row label on left
-            r_lbl = ctk.CTkLabel(grid_container, text=row_letter, font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color="gray50")
-            r_lbl.grid(row=r, column=0, padx=(0, 10), pady=4)
 
-            for c in range(cols_per_row):
-                seat_num = c + 1
-                seat_name = f"{row_letter}{seat_num}"
-                
-                # Column assignment in grid (accounting for middle aisle)
-                grid_col = seat_num if seat_num <= 5 else seat_num + 1
-
-                # Check state
-                user_id_who_booked = booked_seats.get(seat_name)
-                is_booked = user_id_who_booked is not None
-                is_booked_by_me = is_booked and (user_id_who_booked == self.current_user_id)
-                
-                # Button Styling
-                if is_booked:
-                    if is_booked_by_me:
-                        btn_color = "#1F6AA5"  # Cyan/Blue
-                        btn_hover = "#1F6AA5"
-                        btn_state = "disabled"
-                        text_col = "white"
-                    else:
-                        btn_color = "#D32F2F"  # Red
-                        btn_hover = "#D32F2F"
-                        btn_state = "disabled"
-                        text_col = "white"
+        if total_capacity > 120:
+            # 24 columns in visual grid: 5 - 2 aisle - 10 - 2 aisle - 5
+            # Configure columns inside layout grid
+            grid_container.grid_columnconfigure(0, weight=0, minsize=40) # row label
+            for c in range(1, 25):
+                if c in [6, 7, 18, 19]:
+                    grid_container.grid_columnconfigure(c, weight=0, minsize=20) # Aisle spacer
                 else:
-                    btn_color = "#3E3E3E"  # Dark gray / Unselected
-                    btn_hover = "#5A5A5A"
-                    btn_state = "normal"
-                    text_col = "gray90"
+                    grid_container.grid_columnconfigure(c, weight=0, minsize=40)
 
-                # Draw Seat Button
-                btn = ctk.CTkButton(
-                    grid_container,
-                    text=f"{seat_num}",
-                    width=32,
-                    height=32,
-                    corner_radius=6,
-                    fg_color=btn_color,
-                    hover_color=btn_hover,
-                    state=btn_state,
-                    text_color=text_col,
-                    font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-                    command=lambda s=seat_name: self.on_seat_click(s)
-                )
-                btn.grid(row=r, column=grid_col, padx=3, pady=4)
-                self.seat_buttons[seat_name] = btn
+            # Row A has 24 seats. Remaining seats are 20 per row.
+            num_rows = 1
+            if display_capacity > 24:
+                num_rows += (display_capacity - 24 + 19) // 20
 
-            # Aisle Spacer
-            aisle_lbl = ctk.CTkLabel(grid_container, text="", width=25)
-            aisle_lbl.grid(row=r, column=6)
+            # Render seats
+            for r in range(num_rows):
+                row_letter = rows_str[r]
+                
+                # Row label on left
+                r_lbl = ctk.CTkLabel(grid_container, text=row_letter, font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color="gray50")
+                r_lbl.grid(row=r, column=0, padx=(0, 10), pady=4)
+
+                if r == 0:
+                    # Row A: 24 continuous seats
+                    row_seats = min(24, display_capacity)
+                    for seat_num in range(1, row_seats + 1):
+                        seat_name = f"A{seat_num}"
+                        
+                        # Check state
+                        user_id_who_booked = booked_seats.get(seat_name)
+                        is_booked = user_id_who_booked is not None
+                        is_booked_by_me = is_booked and (user_id_who_booked == self.current_user_id)
+                        
+                        # Button Styling
+                        if is_booked:
+                            if is_booked_by_me:
+                                btn_color = "#1F6AA5"  # Cyan/Blue
+                                btn_hover = "#1F6AA5"
+                                btn_state = "disabled"
+                                text_col = "white"
+                            else:
+                                btn_color = "#D32F2F"  # Red
+                                btn_hover = "#D32F2F"
+                                btn_state = "disabled"
+                                text_col = "white"
+                        else:
+                            btn_color = "#3E3E3E"  # Dark gray / Unselected
+                            btn_hover = "#5A5A5A"
+                            btn_state = "normal"
+                            text_col = "gray90"
+
+                        # Draw Seat Button
+                        btn = ctk.CTkButton(
+                            grid_container,
+                            text=f"{seat_num}",
+                            width=32,
+                            height=32,
+                            corner_radius=6,
+                            fg_color=btn_color,
+                            hover_color=btn_hover,
+                            state=btn_state,
+                            text_color=text_col,
+                            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                            command=lambda s=seat_name: self.on_seat_click(s)
+                        )
+                        btn.grid(row=r, column=seat_num, padx=3, pady=4)
+                        self.seat_buttons[seat_name] = btn
+                else:
+                    # Rows B, C...: 20 seats with aisle columns 6, 7 and 18, 19
+                    seat_num = 1
+                    row_limit = (display_capacity - 24 - (r - 1) * 20) if (r == num_rows - 1) else 20
+                    for col in range(1, 25):
+                        if col in [6, 7, 18, 19]:
+                            # Just an empty spacer label
+                            spacer_lbl = ctk.CTkLabel(grid_container, text="", width=20)
+                            spacer_lbl.grid(row=r, column=col)
+                        else:
+                            if seat_num <= row_limit:
+                                seat_name = f"{row_letter}{seat_num}"
+                                
+                                # Check state
+                                user_id_who_booked = booked_seats.get(seat_name)
+                                is_booked = user_id_who_booked is not None
+                                is_booked_by_me = is_booked and (user_id_who_booked == self.current_user_id)
+                                
+                                # Button Styling
+                                if is_booked:
+                                    if is_booked_by_me:
+                                        btn_color = "#1F6AA5"  # Cyan/Blue
+                                        btn_hover = "#1F6AA5"
+                                        btn_state = "disabled"
+                                        text_col = "white"
+                                    else:
+                                        btn_color = "#D32F2F"  # Red
+                                        btn_hover = "#D32F2F"
+                                        btn_state = "disabled"
+                                        text_col = "white"
+                                else:
+                                    btn_color = "#3E3E3E"  # Dark gray / Unselected
+                                    btn_hover = "#5A5A5A"
+                                    btn_state = "normal"
+                                    text_col = "gray90"
+
+                                # Draw Seat Button
+                                btn = ctk.CTkButton(
+                                    grid_container,
+                                    text=f"{seat_num}",
+                                    width=32,
+                                    height=32,
+                                    corner_radius=6,
+                                    fg_color=btn_color,
+                                    hover_color=btn_hover,
+                                    state=btn_state,
+                                    text_color=text_col,
+                                    font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                                    command=lambda s=seat_name: self.on_seat_click(s)
+                                )
+                                btn.grid(row=r, column=col, padx=3, pady=4)
+                                self.seat_buttons[seat_name] = btn
+                                seat_num += 1
+
+        else:
+            cols_per_row = 10
+            num_rows = (display_capacity + cols_per_row - 1) // cols_per_row
+
+            # Configure columns inside layout grid
+            grid_container.grid_columnconfigure(0, weight=0, minsize=40) # row label
+            for c in range(1, 12):
+                if c == 6:
+                    grid_container.grid_columnconfigure(c, weight=0, minsize=25) # Aisle spacer
+                else:
+                    grid_container.grid_columnconfigure(c, weight=0, minsize=40)
+
+            for r in range(num_rows):
+                row_letter = rows_str[r]
+                
+                # Row label on left
+                r_lbl = ctk.CTkLabel(grid_container, text=row_letter, font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color="gray50")
+                r_lbl.grid(row=r, column=0, padx=(0, 10), pady=4)
+
+                for c in range(cols_per_row):
+                    seat_num = c + 1
+                    seat_name = f"{row_letter}{seat_num}"
+                    
+                    # Column assignment in grid (accounting for middle aisle)
+                    grid_col = seat_num if seat_num <= 5 else seat_num + 1
+
+                    # Check state
+                    user_id_who_booked = booked_seats.get(seat_name)
+                    is_booked = user_id_who_booked is not None
+                    is_booked_by_me = is_booked and (user_id_who_booked == self.current_user_id)
+                    
+                    # Button Styling
+                    if is_booked:
+                        if is_booked_by_me:
+                            btn_color = "#1F6AA5"  # Cyan/Blue
+                            btn_hover = "#1F6AA5"
+                            btn_state = "disabled"
+                            text_col = "white"
+                        else:
+                            btn_color = "#D32F2F"  # Red
+                            btn_hover = "#D32F2F"
+                            btn_state = "disabled"
+                            text_col = "white"
+                    else:
+                        btn_color = "#3E3E3E"  # Dark gray / Unselected
+                        btn_hover = "#5A5A5A"
+                        btn_state = "normal"
+                        text_col = "gray90"
+
+                    # Draw Seat Button
+                    btn = ctk.CTkButton(
+                        grid_container,
+                        text=f"{seat_num}",
+                        width=32,
+                        height=32,
+                        corner_radius=6,
+                        fg_color=btn_color,
+                        hover_color=btn_hover,
+                        state=btn_state,
+                        text_color=text_col,
+                        font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                        command=lambda s=seat_name: self.on_seat_click(s)
+                    )
+                    btn.grid(row=r, column=grid_col, padx=3, pady=4)
+                    self.seat_buttons[seat_name] = btn
+
+                # Aisle Spacer
+                aisle_lbl = ctk.CTkLabel(grid_container, text="", width=25)
+                aisle_lbl.grid(row=r, column=6)
 
         # Inform if capped
         if total_capacity > 150:

@@ -618,16 +618,39 @@ class AdminLogin(BaseModel):
 def get_seat_names(seat_count: int) -> List[str]:
     rows = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     seats = []
-    for i in range(seat_count):
-        row_idx = i // 10
-        if row_idx < len(rows):
-            row = rows[row_idx]
-        else:
-            first = rows[(row_idx // len(rows)) - 1]
-            second = rows[row_idx % len(rows)]
-            row = f"{first}{second}"
-        seat_num = (i % 10) + 1
-        seats.append(f"{row}{seat_num}")
+    if seat_count > 120:
+        # Special layout for screens with > 120 seats:
+        # Row A (Elite): 24 seats
+        row_a_seats = min(seat_count, 24)
+        for c in range(row_a_seats):
+            seats.append(f"A{c+1}")
+        
+        remaining = seat_count - row_a_seats
+        r = 1
+        while remaining > 0:
+            if r < len(rows):
+                row_letter = rows[r]
+            else:
+                first = rows[(r // len(rows)) - 1]
+                second = rows[r % len(rows)]
+                row_letter = f"{first}{second}"
+            row_seats = min(remaining, 20)
+            for c in range(row_seats):
+                seats.append(f"{row_letter}{c+1}")
+            remaining -= row_seats
+            r += 1
+    else:
+        # Standard layout: 10 seats per row
+        for i in range(seat_count):
+            row_idx = i // 10
+            if row_idx < len(rows):
+                row = rows[row_idx]
+            else:
+                first = rows[(row_idx // len(rows)) - 1]
+                second = rows[row_idx % len(rows)]
+                row = f"{first}{second}"
+            seat_num = (i % 10) + 1
+            seats.append(f"{row}{seat_num}")
     return seats
 
 def parse_seat_input(seat_input: str) -> List[str]:

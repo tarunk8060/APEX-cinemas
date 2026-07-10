@@ -48,11 +48,26 @@ class SeatBooking:
 
         rows = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-        for i in range(seat_count):
-            row = rows[i // 10]
-            seat_num = (i % 10) + 1
-            seat_name = f"{row}{seat_num}"
-            self.seats[seat_name] = False
+        if seat_count > 120:
+            row_a_seats = min(seat_count, 24)
+            for c in range(row_a_seats):
+                self.seats[f"A{c+1}"] = False
+            
+            remaining = seat_count - row_a_seats
+            r = 1
+            while remaining > 0:
+                row_letter = rows[r]
+                row_seats = min(remaining, 20)
+                for c in range(row_seats):
+                    self.seats[f"{row_letter}{c+1}"] = False
+                remaining -= row_seats
+                r += 1
+        else:
+            for i in range(seat_count):
+                row = rows[i // 10]
+                seat_num = (i % 10) + 1
+                seat_name = f"{row}{seat_num}"
+                self.seats[seat_name] = False
 
         # Get first showtime ID
         cursor.execute("SELECT id FROM showtimes WHERE movie_id = ? ORDER BY id LIMIT 1", (self.movie_id,))

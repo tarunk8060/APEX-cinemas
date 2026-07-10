@@ -622,59 +622,153 @@ function renderSeatGrid(totalSeats, seatStatesMap) {
     const gridContainer = document.getElementById('seat-layout-grid');
     gridContainer.innerHTML = '';
 
-    // Rendering parameters
     const displaySeats = Math.min(totalSeats, 150);
-    const cols = 10;
-    const rowsCount = Math.ceil(displaySeats / cols);
     const rowLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-    for (let r = 0; r < rowsCount; r++) {
-        const letter = rowLetters[r];
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'seat-row';
+    if (totalSeats > 120) {
+        // Special 24-column layout: 5 - 2 aisle - 10 - 2 aisle - 5
+        // Row A: 24 continuous seats
+        // Rows B, C...: 20 seats with aisles in columns 6, 7 and 18, 19
+        let rowsCount = 1;
+        if (displaySeats > 24) {
+            rowsCount += Math.ceil((displaySeats - 24) / 20);
+        }
 
-        // Row letter on left
-        const label = document.createElement('span');
-        label.className = 'row-label';
-        label.textContent = letter;
-        rowDiv.appendChild(label);
+        for (let r = 0; r < rowsCount; r++) {
+            const letter = rowLetters[r];
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'seat-row';
 
-        for (let c = 0; c < cols; c++) {
-            const seatNum = c + 1;
-            const seatNo = `${letter}${seatNum}`;
+            // Row letter on left
+            const label = document.createElement('span');
+            label.className = 'row-label';
+            label.textContent = letter;
+            rowDiv.appendChild(label);
 
-            // Handle Middle aisle space
-            if (c === 5) {
-                const spacer = document.createElement('div');
-                spacer.className = 'seat-aisle-spacer';
-                rowDiv.appendChild(spacer);
-            }
+            if (r === 0) {
+                // Row A: 24 continuous seats
+                const seatsInRowA = Math.min(24, displaySeats);
+                for (let seatNum = 1; seatNum <= seatsInRowA; seatNum++) {
+                    const seatNo = `A${seatNum}`;
+                    const seatBtn = document.createElement('button');
+                    seatBtn.className = 'seat';
+                    seatBtn.textContent = seatNum;
 
-            const seatBtn = document.createElement('button');
-            seatBtn.className = 'seat';
-            seatBtn.textContent = seatNum;
+                    const bookedById = seatStatesMap[seatNo];
+                    const isBooked = bookedById !== null && bookedById !== undefined;
+                    const isBookedByMe = isBooked && (bookedById === state.currentUser.id);
 
-            // Check status
-            const bookedById = seatStatesMap[seatNo];
-            const isBooked = bookedById !== null && bookedById !== undefined;
-            const isBookedByMe = isBooked && (bookedById === state.currentUser.id);
-
-            if (isBooked) {
-                if (isBookedByMe) {
-                    seatBtn.classList.add('your-booking');
-                    seatBtn.title = 'Your seat';
-                } else {
-                    seatBtn.classList.add('booked');
-                    seatBtn.title = 'Reserved';
+                    if (isBooked) {
+                        if (isBookedByMe) {
+                            seatBtn.classList.add('your-booking');
+                            seatBtn.title = 'Your seat';
+                        } else {
+                            seatBtn.classList.add('booked');
+                            seatBtn.title = 'Reserved';
+                        }
+                    } else {
+                        seatBtn.title = `Seat ${seatNo}`;
+                        seatBtn.onclick = () => selectSeat(seatNo, seatBtn);
+                    }
+                    rowDiv.appendChild(seatBtn);
                 }
             } else {
-                seatBtn.title = `Seat ${seatNo}`;
-                seatBtn.onclick = () => selectSeat(seatNo, seatBtn);
-            }
+                // Rows B, C...: 20 seats with aisles in columns 6, 7 and 18, 19
+                let seatNum = 1;
+                const rowLimit = (r === rowsCount - 1) ? (displaySeats - 24 - (r - 1) * 20) : 20;
 
-            rowDiv.appendChild(seatBtn);
+                for (let col = 1; col <= 24; col++) {
+                    if (col === 6 || col === 7 || col === 18 || col === 19) {
+                        const spacer = document.createElement('div');
+                        spacer.className = 'seat-aisle-spacer';
+                        rowDiv.appendChild(spacer);
+                    } else {
+                        if (seatNum <= rowLimit) {
+                            const seatNo = `${letter}${seatNum}`;
+                            const seatBtn = document.createElement('button');
+                            seatBtn.className = 'seat';
+                            seatBtn.textContent = seatNum;
+
+                            const bookedById = seatStatesMap[seatNo];
+                            const isBooked = bookedById !== null && bookedById !== undefined;
+                            const isBookedByMe = isBooked && (bookedById === state.currentUser.id);
+
+                            if (isBooked) {
+                                if (isBookedByMe) {
+                                    seatBtn.classList.add('your-booking');
+                                    seatBtn.title = 'Your seat';
+                                } else {
+                                    seatBtn.classList.add('booked');
+                                    seatBtn.title = 'Reserved';
+                                }
+                            } else {
+                                seatBtn.title = `Seat ${seatNo}`;
+                                seatBtn.onclick = () => selectSeat(seatNo, seatBtn);
+                            }
+                            rowDiv.appendChild(seatBtn);
+                            seatNum++;
+                        } else {
+                            const emptySpacer = document.createElement('div');
+                            emptySpacer.style.width = '32px';
+                            emptySpacer.style.height = '32px';
+                            rowDiv.appendChild(emptySpacer);
+                        }
+                    }
+                }
+            }
+            gridContainer.appendChild(rowDiv);
         }
-        gridContainer.appendChild(rowDiv);
+    } else {
+        // Standard 10-column layout with middle aisle (c === 5)
+        const cols = 10;
+        const rowsCount = Math.ceil(displaySeats / cols);
+
+        for (let r = 0; r < rowsCount; r++) {
+            const letter = rowLetters[r];
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'seat-row';
+
+            // Row letter on left
+            const label = document.createElement('span');
+            label.className = 'row-label';
+            label.textContent = letter;
+            rowDiv.appendChild(label);
+
+            for (let c = 0; c < cols; c++) {
+                const seatNum = c + 1;
+                const seatNo = `${letter}${seatNum}`;
+
+                if (c === 5) {
+                    const spacer = document.createElement('div');
+                    spacer.className = 'seat-aisle-spacer';
+                    rowDiv.appendChild(spacer);
+                }
+
+                const seatBtn = document.createElement('button');
+                seatBtn.className = 'seat';
+                seatBtn.textContent = seatNum;
+
+                const bookedById = seatStatesMap[seatNo];
+                const isBooked = bookedById !== null && bookedById !== undefined;
+                const isBookedByMe = isBooked && (bookedById === state.currentUser.id);
+
+                if (isBooked) {
+                    if (isBookedByMe) {
+                        seatBtn.classList.add('your-booking');
+                        seatBtn.title = 'Your seat';
+                    } else {
+                        seatBtn.classList.add('booked');
+                        seatBtn.title = 'Reserved';
+                    }
+                } else {
+                    seatBtn.title = `Seat ${seatNo}`;
+                    seatBtn.onclick = () => selectSeat(seatNo, seatBtn);
+                }
+
+                rowDiv.appendChild(seatBtn);
+            }
+            gridContainer.appendChild(rowDiv);
+        }
     }
 }
 
@@ -1006,55 +1100,147 @@ function renderCancelSeatGrid(totalSeats, seatStatesMap) {
     gridContainer.innerHTML = '';
 
     const displaySeats = Math.min(totalSeats, 150);
-    const cols = 10;
-    const rowsCount = Math.ceil(displaySeats / cols);
     const rowLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-    for (let r = 0; r < rowsCount; r++) {
-        const letter = rowLetters[r];
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'seat-row';
-
-        // Row letter on left
-        const label = document.createElement('span');
-        label.className = 'row-label';
-        label.textContent = letter;
-        rowDiv.appendChild(label);
-
-        for (let c = 0; c < cols; c++) {
-            const seatNum = c + 1;
-            const seatNo = `${letter}${seatNum}`;
-
-            if (c === 5) {
-                const spacer = document.createElement('div');
-                spacer.className = 'seat-aisle-spacer';
-                rowDiv.appendChild(spacer);
-            }
-
-            const seatBtn = document.createElement('button');
-            seatBtn.className = 'seat';
-            seatBtn.textContent = seatNum;
-
-            const stateVal = seatStatesMap[seatNo];
-
-            if (stateVal === 'user_booked') {
-                seatBtn.classList.add('your-booking');
-                seatBtn.title = `Your Seat ${seatNo} - Click to cancel`;
-                seatBtn.onclick = () => selectSeatForCancellation(seatNo, seatBtn);
-            } else if (stateVal === 'others_booked') {
-                seatBtn.classList.add('booked');
-                seatBtn.style.opacity = '0.35';
-                seatBtn.style.pointerEvents = 'none';
-                seatBtn.title = 'Reserved';
-            } else {
-                seatBtn.style.opacity = '0.2';
-                seatBtn.style.pointerEvents = 'none';
-                seatBtn.title = 'Available';
-            }
-
-            rowDiv.appendChild(seatBtn);
+    if (totalSeats > 120) {
+        // Special 24-column layout: 5 - 2 aisle - 10 - 2 aisle - 5
+        let rowsCount = 1;
+        if (displaySeats > 24) {
+            rowsCount += Math.ceil((displaySeats - 24) / 20);
         }
-        gridContainer.appendChild(rowDiv);
+
+        for (let r = 0; r < rowsCount; r++) {
+            const letter = rowLetters[r];
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'seat-row';
+
+            // Row letter on left
+            const label = document.createElement('span');
+            label.className = 'row-label';
+            label.textContent = letter;
+            rowDiv.appendChild(label);
+
+            if (r === 0) {
+                // Row A: 24 continuous seats
+                const seatsInRowA = Math.min(24, displaySeats);
+                for (let seatNum = 1; seatNum <= seatsInRowA; seatNum++) {
+                    const seatNo = `A${seatNum}`;
+                    const seatBtn = document.createElement('button');
+                    seatBtn.className = 'seat';
+                    seatBtn.textContent = seatNum;
+
+                    const stateVal = seatStatesMap[seatNo];
+                    if (stateVal === 'user_booked') {
+                        seatBtn.classList.add('your-booking');
+                        seatBtn.title = `Your Seat ${seatNo} - Click to cancel`;
+                        seatBtn.onclick = () => selectSeatForCancellation(seatNo, seatBtn);
+                    } else if (stateVal === 'others_booked') {
+                        seatBtn.classList.add('booked');
+                        seatBtn.style.opacity = '0.35';
+                        seatBtn.style.pointerEvents = 'none';
+                        seatBtn.title = 'Reserved';
+                    } else {
+                        seatBtn.style.opacity = '0.2';
+                        seatBtn.style.pointerEvents = 'none';
+                        seatBtn.title = 'Available';
+                    }
+                    rowDiv.appendChild(seatBtn);
+                }
+            } else {
+                // Rows B, C...: 20 seats with aisles in columns 6, 7 and 18, 19
+                let seatNum = 1;
+                const rowLimit = (r === rowsCount - 1) ? (displaySeats - 24 - (r - 1) * 20) : 20;
+
+                for (let col = 1; col <= 24; col++) {
+                    if (col === 6 || col === 7 || col === 18 || col === 19) {
+                        const spacer = document.createElement('div');
+                        spacer.className = 'seat-aisle-spacer';
+                        rowDiv.appendChild(spacer);
+                    } else {
+                        if (seatNum <= rowLimit) {
+                            const seatNo = `${letter}${seatNum}`;
+                            const seatBtn = document.createElement('button');
+                            seatBtn.className = 'seat';
+                            seatBtn.textContent = seatNum;
+
+                            const stateVal = seatStatesMap[seatNo];
+                            if (stateVal === 'user_booked') {
+                                seatBtn.classList.add('your-booking');
+                                seatBtn.title = `Your Seat ${seatNo} - Click to cancel`;
+                                seatBtn.onclick = () => selectSeatForCancellation(seatNo, seatBtn);
+                            } else if (stateVal === 'others_booked') {
+                                seatBtn.classList.add('booked');
+                                seatBtn.style.opacity = '0.35';
+                                seatBtn.style.pointerEvents = 'none';
+                                seatBtn.title = 'Reserved';
+                            } else {
+                                seatBtn.style.opacity = '0.2';
+                                seatBtn.style.pointerEvents = 'none';
+                                seatBtn.title = 'Available';
+                            }
+                            rowDiv.appendChild(seatBtn);
+                            seatNum++;
+                        } else {
+                            const emptySpacer = document.createElement('div');
+                            emptySpacer.style.width = '32px';
+                            emptySpacer.style.height = '32px';
+                            rowDiv.appendChild(emptySpacer);
+                        }
+                    }
+                }
+            }
+            gridContainer.appendChild(rowDiv);
+        }
+    } else {
+        // Standard 10-column layout
+        const cols = 10;
+        const rowsCount = Math.ceil(displaySeats / cols);
+
+        for (let r = 0; r < rowsCount; r++) {
+            const letter = rowLetters[r];
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'seat-row';
+
+            // Row letter on left
+            const label = document.createElement('span');
+            label.className = 'row-label';
+            label.textContent = letter;
+            rowDiv.appendChild(label);
+
+            for (let c = 0; c < cols; c++) {
+                const seatNum = c + 1;
+                const seatNo = `${letter}${seatNum}`;
+
+                if (c === 5) {
+                    const spacer = document.createElement('div');
+                    spacer.className = 'seat-aisle-spacer';
+                    rowDiv.appendChild(spacer);
+                }
+
+                const seatBtn = document.createElement('button');
+                seatBtn.className = 'seat';
+                seatBtn.textContent = seatNum;
+
+                const stateVal = seatStatesMap[seatNo];
+                if (stateVal === 'user_booked') {
+                    seatBtn.classList.add('your-booking');
+                    seatBtn.title = `Your Seat ${seatNo} - Click to cancel`;
+                    seatBtn.onclick = () => selectSeatForCancellation(seatNo, seatBtn);
+                } else if (stateVal === 'others_booked') {
+                    seatBtn.classList.add('booked');
+                    seatBtn.style.opacity = '0.35';
+                    seatBtn.style.pointerEvents = 'none';
+                    seatBtn.title = 'Reserved';
+                } else {
+                    seatBtn.style.opacity = '0.2';
+                    seatBtn.style.pointerEvents = 'none';
+                    seatBtn.title = 'Available';
+                }
+
+                rowDiv.appendChild(seatBtn);
+            }
+            gridContainer.appendChild(rowDiv);
+        }
     }
 }
 
