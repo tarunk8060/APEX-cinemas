@@ -865,7 +865,7 @@ async function loadBookings() {
             listContainer.appendChild(activeHeader);
 
             activeList.forEach(booking => {
-                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: 0 };
+                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: booking.price || 0 };
                 const card = document.createElement('div');
                 card.className = 'booking-row-card glass-card';
                 
@@ -911,7 +911,7 @@ async function loadBookings() {
             listContainer.appendChild(pastHeader);
 
             pastList.forEach(booking => {
-                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: 0 };
+                const movie = state.movies.find(m => m.id === booking.movie_id) || { name: booking.movie_name, language: 'N/A', screen_no: 'N/A', price: booking.price || 0 };
                 const card = document.createElement('div');
                 card.className = 'booking-row-card glass-card expired';
                 
@@ -963,7 +963,7 @@ async function startCancellation(showtimeId, seats) {
 
         // Load showtime and movie information
         const seatData = await apiRequest(`/showtimes/${showtimeId}/seats`);
-        const movie = state.movies.find(m => m.id === seatData.movie_id) || { name: 'Odyssey Feature', price: 150 };
+        const movie = state.movies.find(m => m.id === seatData.movie_id) || { name: seatData.movie_name || 'Odyssey Feature', price: seatData.price || 150 };
         state.cancelMoviePrice = movie.price;
 
         // Open Cancellation View

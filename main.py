@@ -590,6 +590,7 @@ class BookingResponse(BaseModel):
     show_date: str
     show_time: str
     seat_no: str
+    price: int
     user_name: Optional[str] = Field(None, json_schema_extra={"example": "John Doe"})
     user_id: Optional[str] = Field(None, json_schema_extra={"example": "I001"})
     is_expired: bool = False
@@ -915,7 +916,7 @@ def get_showtime_seats(showtime_id: int, db=Depends(get_db)):
 
     # Fetch showtime and movie information
     cursor.execute(
-        f"SELECT s.id as showtime_id, s.movie_id, s.show_date, s.show_time, m.seats_available "
+        f"SELECT s.id as showtime_id, s.movie_id, s.show_date, s.show_time, m.seats_available, m.price, m.name as movie_name "
         f"FROM showtimes s JOIN movies m ON s.movie_id = m.id WHERE s.id = {PH}",
         (showtime_id,)
     )
@@ -939,6 +940,8 @@ def get_showtime_seats(showtime_id: int, db=Depends(get_db)):
     return {
         "showtime_id": showtime_id,
         "movie_id": movie_id,
+        "movie_name": row["movie_name"],
+        "price": row["price"],
         "show_date": show_date,
         "show_time": show_time,
         "total_seats": seat_count,
@@ -1123,7 +1126,7 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
     # 1. Fetch Active Bookings
     query_active = (
         "SELECT b.showtime_id, s.movie_id, m.name as movie_name, s.show_date, s.show_time, "
-        "       b.seat_no, b.user_name, b.user_id "
+        "       b.seat_no, b.user_name, b.user_id, m.price "
         "FROM booked_seats b "
         "JOIN showtimes s ON b.showtime_id = s.id "
         "JOIN movies m ON s.movie_id = m.id"
@@ -1164,7 +1167,7 @@ def get_bookings(user_name: Optional[str] = None, user_id: Optional[str] = None,
     # 2. Fetch Past/Expired Bookings
     query_past = (
         "SELECT b.showtime_id, s.movie_id, m.name as movie_name, s.show_date, s.show_time, "
-        "       b.seat_no, b.user_name, b.user_id "
+        "       b.seat_no, b.user_name, b.user_id, m.price "
         "FROM past_bookings b "
         "JOIN showtimes s ON b.showtime_id = s.id "
         "JOIN movies m ON s.movie_id = m.id"
