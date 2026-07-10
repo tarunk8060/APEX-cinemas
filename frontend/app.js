@@ -1364,9 +1364,20 @@ function handleConfirmCancellation() {
                         body: JSON.stringify({ seat_no: seat })
                     })
                 );
-                await Promise.all(promises);
+                const results = await Promise.all(promises);
 
-                showToast('Selected reservations cancelled successfully. Refund initiated.', 'success');
+                let totalRefundVal = 0;
+                let totalDeductionVal = 0;
+                results.forEach(res => {
+                    if (res && res.refund_amount !== undefined) {
+                        totalRefundVal += res.refund_amount;
+                    }
+                    if (res && res.deduction !== undefined) {
+                        totalDeductionVal += res.deduction;
+                    }
+                });
+
+                showToast(`Cancelled successfully! Total refund of ₹${totalRefundVal} processed after ₹${totalDeductionVal} deduction.`, 'success');
                 showView('bookings');
             } catch (err) {
                 showToast('Cancellation failed: ' + err.message, 'error');

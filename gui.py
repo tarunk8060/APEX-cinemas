@@ -1709,7 +1709,7 @@ class MovieBookingApp(ctk.CTk):
         if confirm:
             success = self.cancel_seat_in_db(booking["movie_id"], booking["seat_no"])
             if success:
-                messagebox.showinfo("Cancelled", "Ticket cancelled successfully!")
+                messagebox.showinfo("Cancelled", f"Ticket cancelled successfully! Refund of ₹{refund_amount} processed after ₹40 deduction.")
                 self.show_bookings_tab()
 
     # -------------------------------------------------------------
