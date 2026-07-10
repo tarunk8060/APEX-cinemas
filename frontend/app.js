@@ -485,7 +485,7 @@ async function loadCatalog() {
                             <span class="value">${movie.seats_available} Seats</span>
                         </div>
                         <div class="detail-item">
-                            <span class="label">🔞 Rating:</span>
+                            <span class="label">  Rating:</span>
                             <span class="value badge-rating ${badgeColorClass}">${escapeHTML(ratingVal)}</span>
                         </div>
                     </div>
